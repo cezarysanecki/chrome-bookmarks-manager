@@ -4,6 +4,9 @@
   padding: 0;
 }
 
+/* Ensure [hidden] always wins over explicit display values */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #1e1e2e;
   --surface: #2a2a3d;
