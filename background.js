@@ -41,20 +41,16 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (!tab?.url) return;
 
   const cleanedUrl = cleanUrl(tab.url);
-
-  const existing = await chrome.bookmarks.search({ url: cleanedUrl });
-  if (existing.length > 0) {
-    showBadge('już', '#8888a8');
-    return;
-  }
-
-  await chrome.bookmarks.create({
-    title: tab.title || cleanedUrl,
-    url: cleanedUrl,
+  await chrome.storage.local.set({
+    bm_pending_add: { title: tab.title || cleanedUrl, url: cleanedUrl },
   });
 
-  const wasStripped = cleanedUrl !== tab.url;
-  showBadge(wasStripped ? '✓ ✂' : '✓', '#4caf7d');
+  try {
+    await chrome.action.openPopup();
+  } catch {
+    // openPopup() not available in this context — show badge as hint
+    showBadge('+', '#7c6aff');
+  }
 });
 
 /**

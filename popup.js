@@ -39,6 +39,12 @@ const modalOverlay   = document.getElementById('modal-overlay');
 const modalDesc      = document.getElementById('modal-desc');
 const modalCancel    = document.getElementById('modal-cancel');
 const modalConfirm   = document.getElementById('modal-confirm');
+const addPanel       = document.getElementById('add-panel');
+const addForm        = document.getElementById('add-form');
+const addTitleInput  = document.getElementById('add-title');
+const addUrlInput    = document.getElementById('add-url');
+const addTagsInput   = document.getElementById('add-tags');
+const addCancelBtn   = document.getElementById('add-cancel');
 
 let showOnlyDuplicates = false;
 let settings = { favicons: false, aiEnabled: false, openaiKey: '' };
@@ -89,11 +95,59 @@ function initBookmarks() {
   });
 }
 
+// --- Add bookmark panel ---
+
+function openAddPanel(title = '', url = '', tags = '') {
+  addTitleInput.value = title;
+  addUrlInput.value   = url;
+  addTagsInput.value  = tags;
+  addPanel.hidden = false;
+  (title ? addUrlInput : addTitleInput).focus();
+}
+
+function closeAddPanel() {
+  addPanel.hidden = true;
+  addForm.reset();
+}
+
+document.getElementById('btn-add').addEventListener('click', () => {
+  if (!addPanel.hidden) { closeAddPanel(); return; }
+  chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+    openAddPanel(tab?.title || '', tab?.url || '');
+  });
+});
+
+addCancelBtn.addEventListener('click', closeAddPanel);
+
+addForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const title = addTitleInput.value.trim();
+  const url   = addUrlInput.value.trim();
+  const tags  = addTagsInput.value.split(',').map((t) => t.trim()).filter(Boolean);
+  if (!title || !url) return;
+
+  const rawTitle = buildRawTitle(title, tags);
+  chrome.bookmarks.create({ title: rawTitle, url }, () => {
+    closeAddPanel();
+    chrome.bookmarks.getTree((tree) => {
+      allBookmarks = flattenBookmarks(tree);
+      renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+      checkDuplicates();
+    });
+    showToast(`Dodano „${title}"`, 'ok');
+  });
+});
+
 if (chrome.storage?.local) {
-  chrome.storage.local.get(['bm_settings', BookmarkStats.KEY], (data) => {
+  chrome.storage.local.get(['bm_settings', BookmarkStats.KEY, 'bm_pending_add'], (data) => {
     settings = { favicons: false, aiEnabled: false, openaiKey: '', ...(data.bm_settings || {}) };
     bookmarkStats = data[BookmarkStats.KEY] || {};
     initBookmarks();
+    if (data.bm_pending_add) {
+      const { title, url } = data.bm_pending_add;
+      chrome.storage.local.remove('bm_pending_add');
+      openAddPanel(title, url);
+    }
   });
 } else {
   initBookmarks();
