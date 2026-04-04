@@ -6,7 +6,8 @@ let activeTag       = null;
 let groupMode       = false;
 let gridMode        = false;
 let activeSimilarTo = null;
-let currentSort     = 'default';
+let currentSort     = 'popular';
+let bookmarkStats   = {};  // { [id]: openCount }
 let duplicatesMode  = false;
 let settings        = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '' };
 let deadLinks       = new Set();   // URLs confirmed unreachable
@@ -140,8 +141,9 @@ function initBookmarks() {
 }
 
 if (chrome.storage?.local) {
-  chrome.storage.local.get('bm_settings', (data) => {
+  chrome.storage.local.get(['bm_settings', BookmarkStats.KEY], (data) => {
     applySettings(data.bm_settings || {});
+    bookmarkStats = data[BookmarkStats.KEY] || {};
     initBookmarks();
   });
 } else {
@@ -620,6 +622,10 @@ function renderAll() {
 function sortBookmarks(list) {
   if (currentSort === 'default') return list;
   const sorted = [...list];
+  if (currentSort === 'popular') {
+    sorted.sort((a, b) => (bookmarkStats[b.id] || 0) - (bookmarkStats[a.id] || 0));
+    return sorted;
+  }
   if (currentSort === 'az')     sorted.sort((a, b) => a.title.localeCompare(b.title));
   if (currentSort === 'za')     sorted.sort((a, b) => b.title.localeCompare(a.title));
   if (currentSort === 'domain') sorted.sort((a, b) => {
@@ -689,7 +695,7 @@ function createCard(bm) {
   cardBody.className = 'bm-card-body';
   cardBody.href = bm.url;
   cardBody.title = bm.url;
-  cardBody.addEventListener('click', (e) => { e.preventDefault(); openBookmark(bm.url); });
+  cardBody.addEventListener('click', (e) => { e.preventDefault(); openBookmark(bm); });
 
   const titleEl = document.createElement('span');
   titleEl.className = 'bm-card-title';
@@ -850,7 +856,7 @@ function createRow(bm) {
   link.className = 'bm-link';
   link.href = bm.url;
   link.title = bm.url;
-  link.addEventListener('click', (e) => { e.preventDefault(); openBookmark(bm.url); });
+  link.addEventListener('click', (e) => { e.preventDefault(); openBookmark(bm); });
 
   const titleEl = document.createElement('span');
   titleEl.className = 'bm-title';
@@ -1142,10 +1148,13 @@ function closeModal() { modalOverlay.hidden = true; pendingDelete = null; }
 
 const ALLOWED = ['http:', 'https:', 'ftp:', 'file:'];
 
-function openBookmark(url) {
+function openBookmark(bm) {
+  const url = bm.url;
   let p;
   try { p = new URL(url); } catch { openErrorPage(url); return; }
   if (!ALLOWED.includes(p.protocol)) { openErrorPage(url); return; }
+  BookmarkStats.increment(bm.id);
+  bookmarkStats[bm.id] = (bookmarkStats[bm.id] || 0) + 1;
   chrome.tabs.create({ url });
 }
 
