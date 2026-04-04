@@ -8,6 +8,9 @@ let gridMode        = false;
 let activeSimilarTo = null;
 let currentSort     = 'default';
 let duplicatesMode  = false;
+let settings        = { deadLinkCheck: false };
+let deadLinks       = new Set();   // URLs confirmed unreachable
+let checkRunning    = false;
 
 // --- DOM ---
 const searchEl       = document.getElementById('search');
@@ -118,11 +121,17 @@ function renderHistory() {
 }
 
 // --- Init ---
-chrome.bookmarks.getTree((tree) => {
-  allBookmarks = flattenBookmarks(tree);
-  renderSidebar();
-  renderAll();
-  renderHistory();
+chrome.storage.local.get('bm_settings', (data) => {
+  settings = { deadLinkCheck: false, ...(data.bm_settings || {}) };
+  document.getElementById('setting-dead-links').checked = settings.deadLinkCheck;
+
+  chrome.bookmarks.getTree((tree) => {
+    allBookmarks = flattenBookmarks(tree);
+    renderSidebar();
+    renderAll();
+    renderHistory();
+    if (settings.deadLinkCheck) checkDeadLinks();
+  });
 });
 
 // --- Global keyboard shortcuts ---
@@ -176,6 +185,94 @@ document.getElementById('btn-grid').addEventListener('click', () => {
   document.getElementById('btn-grid').classList.toggle('toggle-btn--active', gridMode);
   renderAll();
 });
+
+// --- Settings modal ---
+const settingsOverlay = document.getElementById('settings-overlay');
+
+document.getElementById('btn-settings').addEventListener('click', () => {
+  settingsOverlay.hidden = false;
+});
+document.getElementById('settings-close').addEventListener('click', () => {
+  settingsOverlay.hidden = true;
+});
+settingsOverlay.addEventListener('click', (e) => {
+  if (e.target === settingsOverlay) settingsOverlay.hidden = true;
+});
+
+document.getElementById('setting-dead-links').addEventListener('change', (e) => {
+  settings.deadLinkCheck = e.target.checked;
+  chrome.storage.local.set({ bm_settings: settings });
+});
+
+document.getElementById('btn-check-now').addEventListener('click', () => {
+  settingsOverlay.hidden = true;
+  checkDeadLinks();
+});
+
+// --- Dead link checking ---
+
+async function checkDeadLinks() {
+  if (checkRunning) return;
+  checkRunning = true;
+  deadLinks.clear();
+
+  const urls = [...new Set(allBookmarks.map((b) => b.url).filter((u) => u.startsWith('http')))];
+  const total = urls.length;
+  let done = 0;
+
+  updateCheckStatus(`Sprawdzanie 0/${total}…`);
+
+  const CONCURRENCY = 5;
+  let idx = 0;
+
+  async function worker() {
+    while (idx < urls.length) {
+      const url = urls[idx++];
+      const alive = await checkUrl(url);
+      if (!alive) deadLinks.add(url);
+      done++;
+      updateCheckStatus(`Sprawdzanie ${done}/${total}…`);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(CONCURRENCY, urls.length) }, worker);
+  await Promise.all(workers);
+
+  checkRunning = false;
+  const count = deadLinks.size;
+  if (count === 0) {
+    updateCheckStatus('Wszystkie linki działają', 6000);
+  } else {
+    updateCheckStatus(`Martwe linki: ${count}`, 0);
+  }
+  renderAll();
+}
+
+async function checkUrl(url) {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(url, { method: 'HEAD', signal: controller.signal });
+    clearTimeout(tid);
+    if (res.status === 405) return true; // HEAD blocked but server responded
+    return res.status < 400;
+  } catch {
+    clearTimeout(tid);
+    return false;
+  }
+}
+
+const deadCheckStatusEl = document.getElementById('dead-check-status');
+let deadStatusTimer;
+
+function updateCheckStatus(msg, autohideMs = null) {
+  deadCheckStatusEl.textContent = msg;
+  deadCheckStatusEl.hidden = false;
+  clearTimeout(deadStatusTimer);
+  if (autohideMs !== null && autohideMs > 0) {
+    deadStatusTimer = setTimeout(() => { deadCheckStatusEl.hidden = true; }, autohideMs);
+  }
+}
 
 // --- Sort ---
 document.getElementById('sort-select').addEventListener('change', (e) => {
@@ -436,6 +533,12 @@ function createCard(bm) {
 
   cardHeader.appendChild(favicon);
   cardHeader.appendChild(domain);
+  if (deadLinks.has(bm.url)) {
+    const dead = document.createElement('span');
+    dead.className = 'bm-dead-badge bm-dead-badge--card';
+    dead.textContent = 'Niedostępny';
+    cardHeader.appendChild(dead);
+  }
   cardHeader.appendChild(copyBtn);
 
   // Body (clickable)
@@ -600,6 +703,13 @@ function createRow(bm) {
 
   link.appendChild(titleEl);
   link.appendChild(urlEl);
+
+  if (deadLinks.has(bm.url)) {
+    const dead = document.createElement('span');
+    dead.className = 'bm-dead-badge';
+    dead.textContent = 'Niedostępny';
+    link.appendChild(dead);
+  }
 
   if (bm.parseError) {
     const badge = document.createElement('button');
