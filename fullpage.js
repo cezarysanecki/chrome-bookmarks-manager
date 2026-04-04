@@ -1154,7 +1154,7 @@ function openErrorPage(u) {
 }
 
 function openTagsErrorPage(bm) {
-  const p = new URLSearchParams({ type: 'tags', value: bm.rawTitle, reason: bm.parseError });
+  const p = new URLSearchParams({ type: 'tags', value: bm.rawTitle, reason: bm.parseError, id: bm.id });
   chrome.tabs.create({ url: `${chrome.runtime.getURL('error.html')}?${p}` });
 }
 

@@ -46,4 +46,26 @@ if (type === 'url') {
     'Poprawny format to: <strong>Tytuł | etykieta1, etykieta2</strong>'
   ));
   card.appendChild(el('div', 'example', escapeHtml('GitHub | dev, tools')));
+
+  const id = params.get('id');
+  if (id) {
+    const input = el('input', 'repair-input');
+    input.type = 'text';
+    input.value = value;
+    input.spellcheck = false;
+
+    const btn = el('button', 'repair-btn', 'Zapisz poprawiony tytuł');
+    btn.addEventListener('click', () => {
+      const newTitle = input.value.trim();
+      if (!newTitle) return;
+      chrome.bookmarks.update(id, { title: newTitle }, () => {
+        btn.textContent = 'Zapisano ✓';
+        btn.disabled = true;
+      });
+    });
+
+    card.appendChild(el('p', 'label', 'Popraw tytuł'));
+    card.appendChild(input);
+    card.appendChild(btn);
+  }
 }

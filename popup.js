@@ -768,6 +768,7 @@ function openTagsErrorPage(bm) {
     type: 'tags',
     value: bm.rawTitle,
     reason: bm.parseError,
+    id: bm.id,
   });
   chrome.tabs.create({ url: `${base}?${params}` });
 }
