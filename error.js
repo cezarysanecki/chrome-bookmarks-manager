@@ -58,6 +58,7 @@ if (type === 'url') {
     btn.addEventListener('click', () => {
       const newTitle = input.value.trim();
       if (!newTitle) return;
+      if (!chrome.bookmarks) { btn.textContent = 'Błąd: brak dostępu do zakładek'; return; }
       chrome.bookmarks.update(id, { title: newTitle }, () => {
         btn.textContent = 'Zapisano ✓';
         btn.disabled = true;
