@@ -944,6 +944,17 @@ html, body { height: 100%; background: var(--bg); color: var(--text);
 .btn-check-now:hover { background: #6a59e0; }
 
 /* ── Favicon in list ────────────────────────────────── */
+.open-count {
+  flex-shrink: 0;
+  background: rgba(124, 106, 255, .15);
+  color: #7c6aff;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
 .bm-row-favicon {
   flex-shrink: 0;
   width: 14px;

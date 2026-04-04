@@ -142,6 +142,17 @@ h1 {
 .action-btn--loading { opacity: .5; cursor: wait; }
 
 /* Favicon in list */
+.open-count {
+  flex-shrink: 0;
+  background: rgba(124, 106, 255, .15);
+  color: #7c6aff;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
 .bookmark-favicon {
   flex-shrink: 0;
   width: 14px;

@@ -689,6 +689,16 @@ function createCard(bm) {
 
   cardHeader.appendChild(favicon);
   cardHeader.appendChild(domain);
+
+  const openCount = bookmarkStats[bm.id] || 0;
+  if (openCount > 0) {
+    const countEl = document.createElement('span');
+    countEl.className = 'open-count';
+    countEl.textContent = openCount;
+    countEl.title = `Otwarto ${openCount} ${openCount === 1 ? 'raz' : 'razy'}`;
+    cardHeader.appendChild(countEl);
+  }
+
   if (deadLinks.has(bm.url)) {
     const dead = document.createElement('span');
     dead.className = 'bm-dead-badge bm-dead-badge--card';
@@ -875,6 +885,15 @@ function createRow(bm) {
 
   link.appendChild(titleEl);
   link.appendChild(urlEl);
+
+  const openCount = bookmarkStats[bm.id] || 0;
+  if (openCount > 0) {
+    const countEl = document.createElement('span');
+    countEl.className = 'open-count';
+    countEl.textContent = openCount;
+    countEl.title = `Otwarto ${openCount} ${openCount === 1 ? 'raz' : 'razy'}`;
+    link.appendChild(countEl);
+  }
 
   if (deadLinks.has(bm.url)) {
     const dead = document.createElement('span');

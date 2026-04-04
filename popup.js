@@ -386,6 +386,15 @@ function createBookmarkRow(bm, query) {
   a.appendChild(titleEl);
   a.appendChild(urlEl);
 
+  const openCount = bookmarkStats[bm.id] || 0;
+  if (openCount > 0) {
+    const countEl = document.createElement('span');
+    countEl.className = 'open-count';
+    countEl.textContent = openCount;
+    countEl.title = `Otwarto ${openCount} ${openCount === 1 ? 'raz' : 'razy'}`;
+    a.appendChild(countEl);
+  }
+
   if (bm.parseError) {
     const errBadge = document.createElement('button');
     errBadge.className = 'parse-error-badge';
