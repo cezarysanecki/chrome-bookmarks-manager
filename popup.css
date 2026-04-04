@@ -332,6 +332,16 @@ main::-webkit-scrollbar-thumb {
 }
 
 /* Duplicate warning bar */
+.stale-bar {
+  background: rgba(99, 179, 237, .08);
+  border-color: rgba(99, 179, 237, .25);
+  color: #63b3ed;
+}
+.stale-bar .dup-bar-btn {
+  background: rgba(99, 179, 237, .15);
+  color: #63b3ed;
+}
+
 .dup-bar {
   display: flex;
   align-items: center;

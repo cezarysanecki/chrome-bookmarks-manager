@@ -13,7 +13,9 @@ let currentQuery = '';
 let activeTagFilter = null;
 let activeSimilarTo = null;  // bm object | null
 let currentSort = 'popular';
-let bookmarkStats = {};  // { [id]: openCount }
+let bookmarkStats = {};  // { [id]: { count, lastOpened } }
+let showOnlyStale = false;
+const STALE_MS = 30 * 24 * 60 * 60 * 1000;
 
 // --- DOM refs ---
 const searchInput    = document.getElementById('search');
@@ -35,6 +37,10 @@ const dupBar            = document.getElementById('dup-bar');
 const dupBarText        = document.getElementById('dup-bar-text');
 const dupBarFilter      = document.getElementById('dup-bar-filter');
 const dupBarClear       = document.getElementById('dup-bar-clear');
+const staleBar          = document.getElementById('stale-bar');
+const staleBarText      = document.getElementById('stale-bar-text');
+const staleBarFilter    = document.getElementById('stale-bar-filter');
+const staleBarClear     = document.getElementById('stale-bar-clear');
 const modalOverlay   = document.getElementById('modal-overlay');
 const modalDesc      = document.getElementById('modal-desc');
 const modalCancel    = document.getElementById('modal-cancel');
@@ -92,6 +98,7 @@ function initBookmarks() {
     allBookmarks = flattenBookmarks(tree);
     renderBookmarks(filterBookmarks(''), '');
     checkDuplicates();
+    checkStale();
   });
 }
 
@@ -194,7 +201,7 @@ tagFilterClear.addEventListener('click', () => {
 
 // --- Duplicates ---
 dupBarFilter.addEventListener('click', () => {
-  showOnlyDuplicates = true;
+  showOnlyDuplicates = true; showOnlyStale = false;
   activeTagFilter = null; activeSimilarTo = null;
   tagFilterBar.hidden = true; similarFilterBar.hidden = true;
   renderBookmarks(filterBookmarks(currentQuery), currentQuery);
@@ -214,6 +221,35 @@ function checkDuplicates() {
     dupBar.hidden = false;
   }
 }
+
+function isStale(bm) {
+  const stat = bookmarkStats[bm.id];
+  const now  = Date.now();
+  if (stat?.lastOpened) return now - stat.lastOpened > STALE_MS;
+  return bm.dateAdded > 0 && now - bm.dateAdded > STALE_MS;
+}
+
+function checkStale() {
+  const count = allBookmarks.filter(isStale).length;
+  if (count > 0) {
+    staleBarText.textContent = `${count} zakładek nieużywanych przez 30+ dni`;
+    staleBar.hidden = false;
+  } else {
+    staleBar.hidden = true;
+  }
+}
+
+staleBarFilter.addEventListener('click', () => {
+  showOnlyStale = true; showOnlyDuplicates = false;
+  activeTagFilter = null; activeSimilarTo = null;
+  tagFilterBar.hidden = true; similarFilterBar.hidden = true;
+  staleBar.hidden = true;
+  renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+});
+
+staleBarClear.addEventListener('click', () => {
+  staleBar.hidden = true;
+});
 
 const TRACKING_P = new Set([
   'utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id',
@@ -320,7 +356,7 @@ function flattenBookmarks(nodes) {
     if (node.url) {
       const raw = node.title || node.url;
       const { title, tags, parseError } = parseTitle(raw);
-      result.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError });
+      result.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError, dateAdded: node.dateAdded || 0 });
     }
     if (node.children) result.push(...flattenBookmarks(node.children));
   }
@@ -331,7 +367,7 @@ function sortBookmarks(list) {
   if (currentSort === 'default') return list;
   const sorted = [...list];
   if (currentSort === 'popular') {
-    sorted.sort((a, b) => (bookmarkStats[b.id] || 0) - (bookmarkStats[a.id] || 0));
+    sorted.sort((a, b) => (bookmarkStats[b.id]?.count || 0) - (bookmarkStats[a.id]?.count || 0));
     return sorted;
   }
   if (currentSort === 'az')     sorted.sort((a, b) => a.title.localeCompare(b.title));
@@ -346,7 +382,9 @@ function sortBookmarks(list) {
 
 function filterBookmarks(query) {
   let list = allBookmarks;
-  if (showOnlyDuplicates) {
+  if (showOnlyStale) {
+    list = list.filter(isStale);
+  } else if (showOnlyDuplicates) {
     const dupIds = new Set(findDuplicateGroups().flat().map((b) => b.id));
     list = list.filter((bm) => dupIds.has(bm.id));
   } else if (activeSimilarTo) {
@@ -440,7 +478,7 @@ function createBookmarkRow(bm, query) {
   a.appendChild(titleEl);
   a.appendChild(urlEl);
 
-  const openCount = bookmarkStats[bm.id] || 0;
+  const openCount = bookmarkStats[bm.id]?.count || 0;
   if (openCount > 0) {
     const countEl = document.createElement('span');
     countEl.className = 'open-count';
@@ -836,7 +874,8 @@ function openBookmark(bm) {
     return;
   }
   BookmarkStats.increment(bm.id);
-  bookmarkStats[bm.id] = (bookmarkStats[bm.id] || 0) + 1;
+  const prev = bookmarkStats[bm.id];
+  bookmarkStats[bm.id] = { count: (prev?.count || 0) + 1, lastOpened: Date.now() };
   chrome.tabs.create({ url });
 }
 

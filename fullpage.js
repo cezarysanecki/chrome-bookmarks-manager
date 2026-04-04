@@ -7,7 +7,9 @@ let groupMode       = false;
 let gridMode        = false;
 let activeSimilarTo = null;
 let currentSort     = 'popular';
-let bookmarkStats   = {};  // { [id]: openCount }
+let bookmarkStats   = {};  // { [id]: { count, lastOpened } }
+const STALE_MS      = 30 * 24 * 60 * 60 * 1000;
+let staleMode       = false;
 let duplicatesMode  = false;
 let settings        = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '' };
 let deadLinks       = new Set();   // URLs confirmed unreachable
@@ -477,7 +479,7 @@ function flattenBookmarks(nodes) {
     if (node.url) {
       const raw = node.title || node.url;
       const { title, tags, parseError } = parseTitle(raw);
-      out.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError });
+      out.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError, dateAdded: node.dateAdded || 0 });
     }
     if (node.children) out.push(...flattenBookmarks(node.children));
   }
@@ -487,7 +489,7 @@ function flattenBookmarks(nodes) {
 // --- Filtering ---
 
 function filtered() {
-  let list = allBookmarks;
+  let list = staleMode ? allBookmarks.filter(isStale) : allBookmarks;
   if (activeSimilarTo) {
     const ids = new Set(findSimilar(activeSimilarTo).map((b) => b.id));
     list = list.filter((b) => ids.has(b.id));
@@ -536,17 +538,34 @@ function renderSidebar() {
     dupItem.innerHTML = `<span>⚠ Duplikaty</span>
       <span class="tag-count tag-count--danger">${dupCount}</span>`;
     dupItem.addEventListener('click', () => {
-      duplicatesMode = !duplicatesMode;
-      if (duplicatesMode) {
-        activeTag = null;
-        activeSimilarTo = null;
-        activeFilterEl.hidden = true;
-      }
-      renderSidebar();
-      renderAll();
+      duplicatesMode = !duplicatesMode; staleMode = false;
+      if (duplicatesMode) { activeTag = null; activeSimilarTo = null; activeFilterEl.hidden = true; }
+      renderSidebar(); renderAll();
     });
     tagListEl.appendChild(dupItem);
   }
+
+  const staleCount = allBookmarks.filter(isStale).length;
+  if (staleCount > 0) {
+    const staleItem = document.createElement('li');
+    staleItem.className = 'tag-item tag-item--divider tag-item--stale'
+      + (staleMode ? ' tag-item--active' : '');
+    staleItem.innerHTML = `<span>🕐 Nieużywane 30+ dni</span>
+      <span class="tag-count tag-count--stale">${staleCount}</span>`;
+    staleItem.addEventListener('click', () => {
+      staleMode = !staleMode; duplicatesMode = false;
+      if (staleMode) { activeTag = null; activeSimilarTo = null; activeFilterEl.hidden = true; }
+      renderSidebar(); renderAll();
+    });
+    tagListEl.appendChild(staleItem);
+  }
+}
+
+function isStale(bm) {
+  const stat = bookmarkStats[bm.id];
+  const now  = Date.now();
+  if (stat?.lastOpened) return now - stat.lastOpened > STALE_MS;
+  return bm.dateAdded > 0 && now - bm.dateAdded > STALE_MS;
 }
 
 function makeTagItem(label, count, value) {
@@ -561,7 +580,7 @@ function makeTagItem(label, count, value) {
 function setTagFilter(tag) {
   activeTag = tag;
   activeSimilarTo = null;
-  duplicatesMode = false;
+  duplicatesMode = false; staleMode = false;
   if (tag && tag !== '__untagged__') {
     filterPrefixEl.textContent = 'Etykieta:';
     filterLabelEl.textContent = tag;
@@ -580,7 +599,7 @@ function setSimilarFilter(bm) {
   } else {
     activeSimilarTo = bm;
     activeTag = null;
-    duplicatesMode = false;
+    duplicatesMode = false; staleMode = false;
     filterPrefixEl.textContent = 'Podobne do:';
     filterLabelEl.textContent = bm.title;
     activeFilterEl.hidden = false;
@@ -630,7 +649,7 @@ function sortBookmarks(list) {
   if (currentSort === 'default') return list;
   const sorted = [...list];
   if (currentSort === 'popular') {
-    sorted.sort((a, b) => (bookmarkStats[b.id] || 0) - (bookmarkStats[a.id] || 0));
+    sorted.sort((a, b) => (bookmarkStats[b.id]?.count || 0) - (bookmarkStats[a.id]?.count || 0));
     return sorted;
   }
   if (currentSort === 'az')     sorted.sort((a, b) => a.title.localeCompare(b.title));
@@ -690,7 +709,7 @@ function createCard(bm) {
   cardHeader.appendChild(favicon);
   cardHeader.appendChild(domain);
 
-  const openCount = bookmarkStats[bm.id] || 0;
+  const openCount = bookmarkStats[bm.id]?.count || 0;
   if (openCount > 0) {
     const countEl = document.createElement('span');
     countEl.className = 'open-count';
@@ -886,7 +905,7 @@ function createRow(bm) {
   link.appendChild(titleEl);
   link.appendChild(urlEl);
 
-  const openCount = bookmarkStats[bm.id] || 0;
+  const openCount = bookmarkStats[bm.id]?.count || 0;
   if (openCount > 0) {
     const countEl = document.createElement('span');
     countEl.className = 'open-count';
@@ -1185,7 +1204,8 @@ function openBookmark(bm) {
   try { p = new URL(url); } catch { openErrorPage(url); return; }
   if (!ALLOWED.includes(p.protocol)) { openErrorPage(url); return; }
   BookmarkStats.increment(bm.id);
-  bookmarkStats[bm.id] = (bookmarkStats[bm.id] || 0) + 1;
+  const prevStat = bookmarkStats[bm.id];
+  bookmarkStats[bm.id] = { count: (prevStat?.count || 0) + 1, lastOpened: Date.now() };
   chrome.tabs.create({ url });
 }
 
