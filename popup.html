@@ -55,7 +55,15 @@
           </svg>
         </button>
       </div>
-      <div class="results-count" id="results-count"></div>
+      <div class="search-footer">
+        <div class="results-count" id="results-count"></div>
+        <select id="sort-select" class="sort-select" title="Sortuj">
+          <option value="default">Domyślna kolejność</option>
+          <option value="az">A → Z</option>
+          <option value="za">Z → A</option>
+          <option value="domain">Domena</option>
+        </select>
+      </div>
       <div id="tag-filter-bar" class="tag-filter-bar" hidden>
         Etykieta: <span id="tag-filter-label" class="tag-filter-label"></span>
         <button id="tag-filter-clear" class="tag-filter-clear" title="Wyczyść filtr">✕</button>

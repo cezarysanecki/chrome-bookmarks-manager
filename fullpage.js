@@ -2,9 +2,10 @@
 
 let allBookmarks = [];   // [{ id, rawTitle, title, url, tags[], parseError }]
 let currentQuery  = '';
-let activeTag     = null;   // null = all
+let activeTag     = null;
 let groupMode     = false;
-let activeSimilarTo = null;  // bm object | null
+let activeSimilarTo = null;
+let currentSort   = 'default';
 
 // --- DOM ---
 const searchEl       = document.getElementById('search');
@@ -73,6 +74,12 @@ filterClearEl.addEventListener('click', () => {
 btnGroup.addEventListener('click', () => {
   groupMode = !groupMode;
   btnGroup.classList.toggle('toggle-btn--active', groupMode);
+  renderAll();
+});
+
+// --- Sort ---
+document.getElementById('sort-select').addEventListener('change', (e) => {
+  currentSort = e.target.value;
   renderAll();
 });
 
@@ -235,9 +242,22 @@ function renderAll() {
   }
 }
 
+function sortBookmarks(list) {
+  if (currentSort === 'default') return list;
+  const sorted = [...list];
+  if (currentSort === 'az')     sorted.sort((a, b) => a.title.localeCompare(b.title));
+  if (currentSort === 'za')     sorted.sort((a, b) => b.title.localeCompare(a.title));
+  if (currentSort === 'domain') sorted.sort((a, b) => {
+    const da = urlHostname(a.url) ?? '';
+    const db = urlHostname(b.url) ?? '';
+    return da.localeCompare(db) || a.title.localeCompare(b.title);
+  });
+  return sorted;
+}
+
 function renderFlat(list) {
   const frag = document.createDocumentFragment();
-  for (const bm of list) frag.appendChild(createRow(bm));
+  for (const bm of sortBookmarks(list)) frag.appendChild(createRow(bm));
   containerEl.appendChild(frag);
 }
 

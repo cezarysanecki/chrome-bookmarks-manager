@@ -12,6 +12,7 @@ let allBookmarks = [];   // [{ id, rawTitle, title, url, tags[] }]
 let currentQuery = '';
 let activeTagFilter = null;
 let activeSimilarTo = null;  // bm object | null
+let currentSort = 'default';
 
 // --- DOM refs ---
 const searchInput    = document.getElementById('search');
@@ -22,6 +23,7 @@ const emptyMessage   = document.getElementById('empty-message');
 const toastEl        = document.getElementById('toast');
 const importFileEl   = document.getElementById('import-file');
 const resultsCount   = document.getElementById('results-count');
+const sortSelect     = document.getElementById('sort-select');
 const tagFilterBar      = document.getElementById('tag-filter-bar');
 const tagFilterLabel    = document.getElementById('tag-filter-label');
 const tagFilterClear    = document.getElementById('tag-filter-clear');
@@ -75,6 +77,12 @@ clearBtn.addEventListener('click', () => {
 tagFilterClear.addEventListener('click', () => {
   activeTagFilter = null;
   tagFilterBar.hidden = true;
+  renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+});
+
+// --- Sort ---
+sortSelect.addEventListener('change', () => {
+  currentSort = sortSelect.value;
   renderBookmarks(filterBookmarks(currentQuery), currentQuery);
 });
 
@@ -155,6 +163,19 @@ function flattenBookmarks(nodes) {
   return result;
 }
 
+function sortBookmarks(list) {
+  if (currentSort === 'default') return list;
+  const sorted = [...list];
+  if (currentSort === 'az')     sorted.sort((a, b) => a.title.localeCompare(b.title));
+  if (currentSort === 'za')     sorted.sort((a, b) => b.title.localeCompare(a.title));
+  if (currentSort === 'domain') sorted.sort((a, b) => {
+    const da = urlHostname(a.url) ?? '';
+    const db = urlHostname(b.url) ?? '';
+    return da.localeCompare(db) || a.title.localeCompare(b.title);
+  });
+  return sorted;
+}
+
 function filterBookmarks(query) {
   let list = allBookmarks;
   if (activeSimilarTo) {
@@ -197,7 +218,7 @@ function renderBookmarks(bookmarks, query) {
   emptyState.hidden = true;
 
   const fragment = document.createDocumentFragment();
-  for (const bm of bookmarks) fragment.appendChild(createBookmarkRow(bm, query));
+  for (const bm of sortBookmarks(bookmarks)) fragment.appendChild(createBookmarkRow(bm, query));
   bookmarksList.appendChild(fragment);
 }
 

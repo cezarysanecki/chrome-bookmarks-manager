@@ -180,12 +180,31 @@ h1 {
   height: 13px;
 }
 
-.results-count {
-  font-size: 11px;
-  color: var(--text-muted);
+.search-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 7px;
   min-height: 14px;
 }
+
+.results-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.sort-select {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  outline: none;
+  padding: 0;
+}
+
+.sort-select:hover { color: var(--text); }
+.sort-select option { background: var(--surface); color: var(--text); }
 
 /* Main list */
 main {
