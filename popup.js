@@ -640,6 +640,12 @@ function startEdit(bm, li) {
   urlInput.placeholder = 'URL';
   urlInput.required = true;
 
+  const tagsInput = document.createElement('input');
+  tagsInput.type = 'text';
+  tagsInput.className = 'edit-input';
+  tagsInput.value = bm.tags.join(', ');
+  tagsInput.placeholder = 'Etykiety (oddzielone przecinkami)';
+
   const btnRow = document.createElement('div');
   btnRow.className = 'edit-buttons';
 
@@ -663,13 +669,15 @@ function startEdit(bm, li) {
     const newTitle = titleInput.value.trim();
     const newUrl = urlInput.value.trim();
     if (!newTitle || !newUrl) return;
+    const newTags = tagsInput.value.split(',').map((t) => t.trim()).filter(Boolean);
 
     const snapshot = { type: 'edit', id: bm.id, title: bm.title, rawTitleBefore: bm.rawTitle, urlBefore: bm.url, ts: Date.now() };
-    const newRaw = buildRawTitle(newTitle, bm.tags);
+    const newRaw = buildRawTitle(newTitle, newTags);
     chrome.bookmarks.update(bm.id, { title: newRaw, url: newUrl }, () => {
       historyPush(snapshot);
       bm.title = newTitle;
       bm.url = newUrl;
+      bm.tags = newTags;
       bm.rawTitle = newRaw;
       li.classList.remove('bookmark-row--editing');
       li.replaceWith(createBookmarkRow(bm, currentQuery));
@@ -690,6 +698,7 @@ function startEdit(bm, li) {
   btnRow.appendChild(cancelBtn);
   form.appendChild(titleInput);
   form.appendChild(urlInput);
+  form.appendChild(tagsInput);
   form.appendChild(btnRow);
   li.appendChild(form);
 

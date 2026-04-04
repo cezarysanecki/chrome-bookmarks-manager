@@ -1080,6 +1080,10 @@ function startEdit(bm, row) {
   urlIn.type = 'url'; urlIn.className = 'edit-input';
   urlIn.value = bm.url; urlIn.placeholder = 'URL'; urlIn.required = true;
 
+  const tagsIn = document.createElement('input');
+  tagsIn.type = 'text'; tagsIn.className = 'edit-input';
+  tagsIn.value = bm.tags.join(', '); tagsIn.placeholder = 'Etykiety (oddzielone przecinkami)';
+
   const btnRow = document.createElement('div');
   btnRow.className = 'edit-buttons';
 
@@ -1098,11 +1102,12 @@ function startEdit(bm, row) {
     e.preventDefault();
     const newTitle = titleIn.value.trim(), newUrl = urlIn.value.trim();
     if (!newTitle || !newUrl) return;
+    const newTags = tagsIn.value.split(',').map((t) => t.trim()).filter(Boolean);
     const snapshot = { type: 'edit', id: bm.id, title: bm.title, rawTitleBefore: bm.rawTitle, urlBefore: bm.url, ts: Date.now() };
-    const newRaw = buildRawTitle(newTitle, bm.tags);
+    const newRaw = buildRawTitle(newTitle, newTags);
     chrome.bookmarks.update(bm.id, { title: newRaw, url: newUrl }, () => {
       historyPush(snapshot);
-      bm.title = newTitle; bm.url = newUrl; bm.rawTitle = newRaw;
+      bm.title = newTitle; bm.url = newUrl; bm.tags = newTags; bm.rawTitle = newRaw;
       row.classList.remove('bm-row--editing');
       row.replaceWith(isCard ? createCard(bm) : createRow(bm));
       showToast(`Zapisano „${newTitle}"`, 'ok', () => {
@@ -1119,7 +1124,7 @@ function startEdit(bm, row) {
   });
 
   btnRow.appendChild(save); btnRow.appendChild(cancel);
-  form.appendChild(titleIn); form.appendChild(urlIn); form.appendChild(btnRow);
+  form.appendChild(titleIn); form.appendChild(urlIn); form.appendChild(tagsIn); form.appendChild(btnRow);
   row.appendChild(form);
   titleIn.focus(); titleIn.select();
 }
