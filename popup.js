@@ -15,7 +15,9 @@ let activeSimilarTo = null;  // bm object | null
 let currentSort = 'popular';
 let bookmarkStats = {};  // { [id]: { count, lastOpened } }
 let showOnlyStale = false;
-const STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const STALE_MS        = 30 * 24 * 60 * 60 * 1000;
+const INSTALLED_AT_KEY = 'bm_installed_at';
+let   pluginInstalledAt = Date.now();
 
 // --- DOM refs ---
 const searchInput    = document.getElementById('search');
@@ -146,9 +148,15 @@ addForm.addEventListener('submit', (e) => {
 });
 
 if (chrome.storage?.local) {
-  chrome.storage.local.get(['bm_settings', BookmarkStats.KEY, 'bm_pending_add'], (data) => {
+  chrome.storage.local.get(['bm_settings', BookmarkStats.KEY, 'bm_pending_add', INSTALLED_AT_KEY], (data) => {
     settings = { favicons: false, aiEnabled: false, openaiKey: '', ...(data.bm_settings || {}) };
     bookmarkStats = data[BookmarkStats.KEY] || {};
+    if (data[INSTALLED_AT_KEY]) {
+      pluginInstalledAt = data[INSTALLED_AT_KEY];
+    } else {
+      pluginInstalledAt = Date.now();
+      chrome.storage.local.set({ [INSTALLED_AT_KEY]: pluginInstalledAt });
+    }
     initBookmarks();
     if (data.bm_pending_add) {
       const { title, url } = data.bm_pending_add;
@@ -224,8 +232,9 @@ function checkDuplicates() {
 
 function isStale(bm) {
   const stat = bookmarkStats[bm.id];
-  if (!stat?.lastOpened) return false;
-  return Date.now() - stat.lastOpened > STALE_MS;
+  const refDate = stat?.lastOpened
+    ?? Math.max(bm.dateAdded || 0, pluginInstalledAt);
+  return Date.now() - refDate > STALE_MS;
 }
 
 function checkStale() {
@@ -355,7 +364,7 @@ function flattenBookmarks(nodes) {
     if (node.url) {
       const raw = node.title || node.url;
       const { title, tags, parseError } = parseTitle(raw);
-      result.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError });
+      result.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError, dateAdded: node.dateAdded || 0 });
     }
     if (node.children) result.push(...flattenBookmarks(node.children));
   }

@@ -34,6 +34,14 @@ const TRACKING_PARAMS = new Set([
   'igshid', 'si', 'ref_',
 ]);
 
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.get('bm_installed_at', (data) => {
+    if (!data.bm_installed_at) {
+      chrome.storage.local.set({ bm_installed_at: Date.now() });
+    }
+  });
+});
+
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'add-bookmark') return;
 
