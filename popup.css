@@ -112,7 +112,22 @@ h1 {
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   z-index: 200;
   animation: slideUp 0.18s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.toast-undo-btn {
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+.toast-undo-btn:hover { opacity: 0.75; }
 
 .toast--ok   { border-color: #4caf7d; color: #4caf7d; }
 .toast--warn { border-color: #ffb432; color: #ffb432; }

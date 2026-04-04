@@ -41,6 +41,41 @@ const modalConfirm   = document.getElementById('modal-confirm');
 
 let showOnlyDuplicates = false;
 
+// --- History (chrome.storage.local) ---
+
+const HISTORY_KEY = 'bm_history';
+const HISTORY_MAX = 30;
+
+function historyPush(entry) {
+  chrome.storage.local.get(HISTORY_KEY, (data) => {
+    const list = data[HISTORY_KEY] || [];
+    list.unshift({ ...entry, ts: Date.now() });
+    if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
+    chrome.storage.local.set({ [HISTORY_KEY]: list });
+  });
+}
+
+function historyRemoveByTs(ts) {
+  chrome.storage.local.get(HISTORY_KEY, (data) => {
+    const list = (data[HISTORY_KEY] || []).filter((e) => e.ts !== ts);
+    chrome.storage.local.set({ [HISTORY_KEY]: list });
+  });
+}
+
+function undoHistoryEntry(entry, onDone) {
+  if (entry.type === 'delete') {
+    chrome.bookmarks.create({ title: entry.rawTitle, url: entry.url }, () => {
+      historyRemoveByTs(entry.ts);
+      onDone?.();
+    });
+  } else if (entry.type === 'edit' || entry.type === 'tag_add' || entry.type === 'tag_remove') {
+    chrome.bookmarks.update(entry.id, { title: entry.rawTitleBefore, url: entry.urlBefore ?? entry.url }, () => {
+      historyRemoveByTs(entry.ts);
+      onDone?.();
+    });
+  }
+}
+
 // --- Bootstrap ---
 chrome.bookmarks.getTree((tree) => {
   allBookmarks = flattenBookmarks(tree);
@@ -467,9 +502,11 @@ function toggleTagEditor(bm, li, btn) {
       removeBtn.innerHTML = '×';
       removeBtn.title = 'Usuń etykietę';
       removeBtn.addEventListener('click', () => {
+        const rawTitleBefore = bm.rawTitle;
         bm.tags = bm.tags.filter((t) => t !== tag);
         bm.rawTitle = buildRawTitle(bm.title, bm.tags);
         chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+        historyPush({ type: 'tag_remove', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
         renderEditorChips();
         refreshRowTags(bm, li);
         if (activeTagFilter === tag) {
@@ -498,9 +535,11 @@ function toggleTagEditor(bm, li, btn) {
   function addTag() {
     const tag = input.value.trim();
     if (!tag || bm.tags.includes(tag)) { input.value = ''; return; }
+    const rawTitleBefore = bm.rawTitle;
     bm.tags = [...bm.tags, tag];
     bm.rawTitle = buildRawTitle(bm.title, bm.tags);
     chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+    historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
     renderEditorChips();
     refreshRowTags(bm, li);
     input.value = '';
@@ -574,14 +613,25 @@ function startEdit(bm, li) {
     const newUrl = urlInput.value.trim();
     if (!newTitle || !newUrl) return;
 
+    const snapshot = { type: 'edit', id: bm.id, title: bm.title, rawTitleBefore: bm.rawTitle, urlBefore: bm.url, ts: Date.now() };
     const newRaw = buildRawTitle(newTitle, bm.tags);
     chrome.bookmarks.update(bm.id, { title: newRaw, url: newUrl }, () => {
+      historyPush(snapshot);
       bm.title = newTitle;
       bm.url = newUrl;
       bm.rawTitle = newRaw;
       li.classList.remove('bookmark-row--editing');
       li.replaceWith(createBookmarkRow(bm, currentQuery));
       updateResultsCount();
+      showToast(`Zapisano „${newTitle}"`, 'ok', () => {
+        undoHistoryEntry(snapshot, () => {
+          chrome.bookmarks.getTree((tree) => {
+            allBookmarks = flattenBookmarks(tree);
+            renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+            showToast('Cofnięto edycję', 'ok');
+          });
+        });
+      });
     });
   });
 
@@ -609,7 +659,12 @@ document.addEventListener('keydown', (e) => {
 modalConfirm.addEventListener('click', () => {
   if (!pendingDelete) return;
   const { id, li } = pendingDelete;
+  const bm = allBookmarks.find((b) => b.id === id);
+  const snapshot = bm
+    ? { type: 'delete', title: bm.title, rawTitle: bm.rawTitle, url: bm.url, ts: Date.now() }
+    : null;
   chrome.bookmarks.remove(id, () => {
+    if (snapshot) historyPush(snapshot);
     allBookmarks = allBookmarks.filter((b) => b.id !== id);
     li.remove();
     updateResultsCount();
@@ -619,6 +674,18 @@ modalConfirm.addEventListener('click', () => {
       emptyMessage.textContent = currentQuery.trim()
         ? `Brak wyników dla „${currentQuery}"`
         : 'Brak zakładek';
+    }
+    if (snapshot) {
+      showToast(`Usunięto „${snapshot.title}"`, 'ok', () => {
+        undoHistoryEntry(snapshot, () => {
+          chrome.bookmarks.getTree((tree) => {
+            allBookmarks = flattenBookmarks(tree);
+            renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+            checkDuplicates();
+            showToast('Cofnięto usunięcie', 'ok');
+          });
+        });
+      });
     }
   });
   closeModal();
@@ -919,12 +986,26 @@ function parseCsv(text) {
 // --- Toast ---
 
 let toastTimer;
-function showToast(msg, type = 'ok') {
-  toastEl.textContent = msg;
+function showToast(msg, type = 'ok', undoFn = null) {
+  toastEl.innerHTML = '';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  toastEl.appendChild(span);
+  if (undoFn) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-undo-btn';
+    btn.textContent = 'Cofnij';
+    btn.addEventListener('click', () => {
+      clearTimeout(toastTimer);
+      toastEl.hidden = true;
+      undoFn();
+    });
+    toastEl.appendChild(btn);
+  }
   toastEl.className = `toast toast--${type}`;
   toastEl.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastEl.hidden = true; }, 3500);
+  toastTimer = setTimeout(() => { toastEl.hidden = true; }, undoFn ? 6000 : 3500);
 }
 
 // --- Date stamp for filename ---

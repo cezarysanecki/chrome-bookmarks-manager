@@ -26,11 +26,102 @@ const modalConfirm   = document.getElementById('modal-confirm');
 const toastEl        = document.getElementById('toast');
 const importFileEl   = document.getElementById('import-file');
 
+// --- History (chrome.storage.local) ---
+
+const HISTORY_KEY = 'bm_history';
+const HISTORY_MAX = 30;
+
+function historyPush(entry) {
+  chrome.storage.local.get(HISTORY_KEY, (data) => {
+    const list = data[HISTORY_KEY] || [];
+    list.unshift({ ...entry, ts: Date.now() });
+    if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
+    chrome.storage.local.set({ [HISTORY_KEY]: list }, renderHistory);
+  });
+}
+
+function historyRemoveByTs(ts) {
+  chrome.storage.local.get(HISTORY_KEY, (data) => {
+    const list = (data[HISTORY_KEY] || []).filter((e) => e.ts !== ts);
+    chrome.storage.local.set({ [HISTORY_KEY]: list }, renderHistory);
+  });
+}
+
+function undoHistoryEntry(entry, onDone) {
+  if (entry.type === 'delete') {
+    chrome.bookmarks.create({ title: entry.rawTitle, url: entry.url }, () => {
+      historyRemoveByTs(entry.ts);
+      onDone?.();
+    });
+  } else if (entry.type === 'edit' || entry.type === 'tag_add' || entry.type === 'tag_remove') {
+    chrome.bookmarks.update(entry.id, { title: entry.rawTitleBefore, url: entry.urlBefore ?? entry.url }, () => {
+      historyRemoveByTs(entry.ts);
+      onDone?.();
+    });
+  }
+}
+
+function historyLabel(entry) {
+  const t = entry.title || '';
+  switch (entry.type) {
+    case 'delete':     return `Usunięto: ${t}`;
+    case 'edit':       return `Edytowano: ${t}`;
+    case 'tag_add':    return `+etykieta „${entry.tag}" → ${t}`;
+    case 'tag_remove': return `-etykieta „${entry.tag}" z ${t}`;
+    default:           return entry.type;
+  }
+}
+
+function renderHistory() {
+  const historyListEl = document.getElementById('history-list');
+  if (!historyListEl) return;
+  chrome.storage.local.get(HISTORY_KEY, (data) => {
+    const entries = data[HISTORY_KEY] || [];
+    historyListEl.innerHTML = '';
+    if (entries.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'history-empty';
+      li.textContent = 'Brak historii';
+      historyListEl.appendChild(li);
+      return;
+    }
+    for (const entry of entries.slice(0, 10)) {
+      const li = document.createElement('li');
+      li.className = 'history-item';
+
+      const text = document.createElement('span');
+      text.className = 'history-text';
+      text.title = historyLabel(entry);
+      text.textContent = historyLabel(entry);
+
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'history-undo-btn';
+      undoBtn.title = 'Cofnij';
+      undoBtn.textContent = '↩';
+      undoBtn.addEventListener('click', () => {
+        undoHistoryEntry(entry, () => {
+          chrome.bookmarks.getTree((tree) => {
+            allBookmarks = flattenBookmarks(tree);
+            renderSidebar();
+            renderAll();
+            showToast('Cofnięto', 'ok');
+          });
+        });
+      });
+
+      li.appendChild(text);
+      li.appendChild(undoBtn);
+      historyListEl.appendChild(li);
+    }
+  });
+}
+
 // --- Init ---
 chrome.bookmarks.getTree((tree) => {
   allBookmarks = flattenBookmarks(tree);
   renderSidebar();
   renderAll();
+  renderHistory();
 });
 
 // --- Global keyboard shortcuts ---
@@ -490,9 +581,11 @@ function toggleTagEditor(bm, row, btn) {
       x.className = 'tag-chip-remove';
       x.innerHTML = '×';
       x.addEventListener('click', () => {
+        const rawTitleBefore = bm.rawTitle;
         bm.tags = bm.tags.filter((t) => t !== tag);
         bm.rawTitle = buildRawTitle(bm.title, bm.tags);
         chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+        historyPush({ type: 'tag_remove', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
         rerender();
         refreshRowTags(bm, row);
         renderSidebar();
@@ -513,9 +606,11 @@ function toggleTagEditor(bm, row, btn) {
   function addTag() {
     const tag = input.value.trim();
     if (!tag || bm.tags.includes(tag)) { input.value = ''; return; }
+    const rawTitleBefore = bm.rawTitle;
     bm.tags = [...bm.tags, tag];
     bm.rawTitle = buildRawTitle(bm.title, bm.tags);
     chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+    historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
     rerender(); refreshRowTags(bm, row); renderSidebar();
     input.value = ''; input.focus();
   }
@@ -566,11 +661,23 @@ function startEdit(bm, row) {
     e.preventDefault();
     const newTitle = titleIn.value.trim(), newUrl = urlIn.value.trim();
     if (!newTitle || !newUrl) return;
+    const snapshot = { type: 'edit', id: bm.id, title: bm.title, rawTitleBefore: bm.rawTitle, urlBefore: bm.url, ts: Date.now() };
     const newRaw = buildRawTitle(newTitle, bm.tags);
     chrome.bookmarks.update(bm.id, { title: newRaw, url: newUrl }, () => {
+      historyPush(snapshot);
       bm.title = newTitle; bm.url = newUrl; bm.rawTitle = newRaw;
       row.classList.remove('bm-row--editing');
       row.replaceWith(createRow(bm));
+      showToast(`Zapisano „${newTitle}"`, 'ok', () => {
+        undoHistoryEntry(snapshot, () => {
+          chrome.bookmarks.getTree((tree) => {
+            allBookmarks = flattenBookmarks(tree);
+            renderSidebar();
+            renderAll();
+            showToast('Cofnięto edycję', 'ok');
+          });
+        });
+      });
     });
   });
 
@@ -590,11 +697,28 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modalOv
 modalConfirm.addEventListener('click', () => {
   if (!pendingDelete) return;
   const { id, row } = pendingDelete;
+  const bm = allBookmarks.find((b) => b.id === id);
+  const snapshot = bm
+    ? { type: 'delete', title: bm.title, rawTitle: bm.rawTitle, url: bm.url, ts: Date.now() }
+    : null;
   chrome.bookmarks.remove(id, () => {
+    if (snapshot) historyPush(snapshot);
     allBookmarks = allBookmarks.filter((b) => b.id !== id);
     row.remove();
     renderSidebar();
     resultsCountEl.textContent = `${allBookmarks.length} zakładek`;
+    if (snapshot) {
+      showToast(`Usunięto „${snapshot.title}"`, 'ok', () => {
+        undoHistoryEntry(snapshot, () => {
+          chrome.bookmarks.getTree((tree) => {
+            allBookmarks = flattenBookmarks(tree);
+            renderSidebar();
+            renderAll();
+            showToast('Cofnięto usunięcie', 'ok');
+          });
+        });
+      });
+    }
   });
   closeModal();
 });
@@ -752,12 +876,26 @@ function parseCsv(text) {
 }
 
 let toastTimer;
-function showToast(msg, type = 'ok') {
-  toastEl.textContent = msg;
+function showToast(msg, type = 'ok', undoFn = null) {
+  toastEl.innerHTML = '';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  toastEl.appendChild(span);
+  if (undoFn) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-undo-btn';
+    btn.textContent = 'Cofnij';
+    btn.addEventListener('click', () => {
+      clearTimeout(toastTimer);
+      toastEl.hidden = true;
+      undoFn();
+    });
+    toastEl.appendChild(btn);
+  }
   toastEl.className = `toast toast--${type}`;
   toastEl.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toastEl.hidden = true; }, 3500);
+  toastTimer = setTimeout(() => { toastEl.hidden = true; }, undoFn ? 6000 : 3500);
 }
 
 function dateStamp() {

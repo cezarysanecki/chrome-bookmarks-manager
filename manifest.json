@@ -3,7 +3,7 @@
   "name": "Bookmarks Manager",
   "version": "1.0.0",
   "description": "Przeglądaj i wyszukuj zakładki Chrome z podglądem tytułu i URL.",
-  "permissions": ["bookmarks", "tabs"],
+  "permissions": ["bookmarks", "tabs", "storage"],
   "commands": {
     "_execute_action": {
       "suggested_key": {
