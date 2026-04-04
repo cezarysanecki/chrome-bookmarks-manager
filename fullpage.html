@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bookmarks Manager</title>
+  <link rel="stylesheet" href="fullpage.css">
+</head>
+<body>
+  <div class="layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-title">Etykiety</div>
+      <ul class="tag-list" id="tag-list"></ul>
+    </aside>
+
+    <!-- Main -->
+    <div class="main">
+      <header class="main-header">
+        <div class="search-wrapper">
+          <svg class="search-icon" viewBox="0 0 20 20" fill="none">
+            <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M13 13L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <input id="search" type="text" placeholder="Szukaj zakładek…"
+                 autocomplete="off" spellcheck="false"/>
+          <button id="clear-search" class="clear-btn" hidden>
+            <svg viewBox="0 0 20 20" fill="none">
+              <path d="M5 5L15 15M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="header-right">
+          <span id="results-count" class="results-count"></span>
+          <button id="btn-group" class="toggle-btn" title="Grupuj po etykietach">
+            <svg viewBox="0 0 20 20" fill="none">
+              <path d="M3 5h14M3 10h9M3 15h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            Grupuj
+          </button>
+          <button id="btn-export" class="action-btn-top" title="Eksportuj do CSV">
+            <svg viewBox="0 0 20 20" fill="none">
+              <path d="M10 13V3M6 7l4-4 4 4M4 15h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Eksport CSV
+          </button>
+          <button id="btn-import" class="action-btn-top" title="Importuj z CSV">
+            <svg viewBox="0 0 20 20" fill="none">
+              <path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Import CSV
+          </button>
+          <input type="file" id="import-file" accept=".csv" hidden>
+        </div>
+      </header>
+
+      <div id="active-filter" class="active-filter" hidden>
+        <span id="active-filter-prefix">Etykieta:</span>
+        <span id="active-filter-label"></span>
+        <button id="active-filter-clear">✕ Wyczyść filtr</button>
+      </div>
+
+      <main id="bookmarks-container" class="bookmarks-container"></main>
+    </div>
+  </div>
+
+  <!-- Delete modal -->
+  <div id="modal-overlay" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M4 7h16M6 7V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v2M9 7v11M12 7v11M15 7v11M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13"
+            stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h2>Usunąć zakładkę?</h2>
+      <p id="modal-desc" class="modal-desc"></p>
+      <div class="modal-buttons">
+        <button id="modal-cancel" class="modal-btn modal-btn--cancel">Anuluj</button>
+        <button id="modal-confirm" class="modal-btn modal-btn--danger">Usuń</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="fullpage.js"></script>
+</body>
+</html>
