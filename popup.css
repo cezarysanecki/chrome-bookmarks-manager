@@ -163,13 +163,15 @@ h1 {
 /* Favicon in list */
 .open-count {
   flex-shrink: 0;
-  background: rgba(124, 106, 255, .15);
-  color: #7c6aff;
-  border-radius: 10px;
-  padding: 1px 6px;
+  background: rgba(245, 158, 11, .13);
+  color: #d97706;
+  border: 1px solid rgba(245, 158, 11, .25);
+  border-radius: 6px;
+  padding: 1px 5px;
   font-size: 10px;
   font-weight: 600;
   line-height: 16px;
+  letter-spacing: .01em;
 }
 
 .bookmark-favicon {

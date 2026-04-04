@@ -694,7 +694,7 @@ function createCard(bm) {
   if (openCount > 0) {
     const countEl = document.createElement('span');
     countEl.className = 'open-count';
-    countEl.textContent = openCount;
+    countEl.textContent = `↗ ${openCount}`;
     countEl.title = `Otwarto ${openCount} ${openCount === 1 ? 'raz' : 'razy'}`;
     cardHeader.appendChild(countEl);
   }
@@ -890,7 +890,7 @@ function createRow(bm) {
   if (openCount > 0) {
     const countEl = document.createElement('span');
     countEl.className = 'open-count';
-    countEl.textContent = openCount;
+    countEl.textContent = `↗ ${openCount}`;
     countEl.title = `Otwarto ${openCount} ${openCount === 1 ? 'raz' : 'razy'}`;
     link.appendChild(countEl);
   }
