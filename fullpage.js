@@ -31,6 +31,20 @@ chrome.bookmarks.getTree((tree) => {
   renderAll();
 });
 
+// --- Global keyboard shortcuts ---
+document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement?.tagName;
+  const inInput = tag === 'INPUT' || tag === 'TEXTAREA';
+  if (e.key === '/' && !inInput) {
+    e.preventDefault();
+    searchEl.focus();
+    searchEl.select();
+  }
+  if (e.key === 'Escape' && inInput && document.activeElement === searchEl) {
+    searchEl.blur();
+  }
+});
+
 // --- Search ---
 let debounce;
 searchEl.addEventListener('input', () => {
