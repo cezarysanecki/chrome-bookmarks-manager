@@ -4,6 +4,7 @@ let allBookmarks = [];   // [{ id, rawTitle, title, url, tags[], parseError }]
 let currentQuery    = '';
 let activeTag       = null;
 let groupMode       = false;
+let gridMode        = false;
 let activeSimilarTo = null;
 let currentSort     = 'default';
 let duplicatesMode  = false;
@@ -166,6 +167,13 @@ filterClearEl.addEventListener('click', () => {
 btnGroup.addEventListener('click', () => {
   groupMode = !groupMode;
   btnGroup.classList.toggle('toggle-btn--active', groupMode);
+  renderAll();
+});
+
+// --- Grid toggle ---
+document.getElementById('btn-grid').addEventListener('click', () => {
+  gridMode = !gridMode;
+  document.getElementById('btn-grid').classList.toggle('toggle-btn--active', gridMode);
   renderAll();
 });
 
@@ -360,7 +368,9 @@ function renderAll() {
     return;
   }
 
-  if (groupMode && !activeTag) {
+  if (gridMode) {
+    renderGrid(list);
+  } else if (groupMode && !activeTag) {
     renderGrouped(list);
   } else {
     renderFlat(list);
@@ -384,6 +394,117 @@ function renderFlat(list) {
   const frag = document.createDocumentFragment();
   for (const bm of sortBookmarks(list)) frag.appendChild(createRow(bm));
   containerEl.appendChild(frag);
+}
+
+function renderGrid(list) {
+  const grid = document.createElement('div');
+  grid.className = 'bm-grid';
+  for (const bm of sortBookmarks(list)) grid.appendChild(createCard(bm));
+  containerEl.appendChild(grid);
+}
+
+function createCard(bm) {
+  const card = document.createElement('div');
+  card.className = 'bm-card';
+  card.dataset.id = bm.id;
+
+  // Favicon + domain header
+  const cardHeader = document.createElement('div');
+  cardHeader.className = 'bm-card-header';
+
+  const favicon = document.createElement('img');
+  favicon.className = 'bm-card-favicon';
+  const host = urlHostname(bm.url);
+  favicon.src = host
+    ? `https://www.google.com/s2/favicons?domain=${host}&sz=32`
+    : '';
+  favicon.width = 16;
+  favicon.height = 16;
+  favicon.alt = '';
+  favicon.onerror = () => { favicon.style.display = 'none'; };
+
+  const domain = document.createElement('span');
+  domain.className = 'bm-card-domain';
+  domain.textContent = host || '—';
+
+  // Copy button (always visible in card)
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'bm-card-copy';
+  copyBtn.title = 'Kopiuj link';
+  copyBtn.innerHTML = svgCopy();
+  copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyLink(bm.url, copyBtn); });
+
+  cardHeader.appendChild(favicon);
+  cardHeader.appendChild(domain);
+  cardHeader.appendChild(copyBtn);
+
+  // Body (clickable)
+  const cardBody = document.createElement('a');
+  cardBody.className = 'bm-card-body';
+  cardBody.href = bm.url;
+  cardBody.title = bm.url;
+  cardBody.addEventListener('click', (e) => { e.preventDefault(); openBookmark(bm.url); });
+
+  const titleEl = document.createElement('span');
+  titleEl.className = 'bm-card-title';
+  titleEl.innerHTML = highlight(bm.title, currentQuery);
+
+  const urlEl = document.createElement('span');
+  urlEl.className = 'bm-card-url';
+  urlEl.innerHTML = highlight(bm.url, currentQuery);
+
+  cardBody.appendChild(titleEl);
+  cardBody.appendChild(urlEl);
+
+  if (bm.tags.length > 0) {
+    const tagsEl = document.createElement('div');
+    tagsEl.className = 'bm-card-tags';
+    for (const tag of bm.tags) {
+      const chip = document.createElement('span');
+      chip.className = 'tag-chip' + (tag === activeTag ? ' tag-chip--active' : '');
+      chip.textContent = tag;
+      chip.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setTagFilter(tag); });
+      tagsEl.appendChild(chip);
+    }
+    cardBody.appendChild(tagsEl);
+  }
+
+  if (bm.parseError) {
+    const badge = document.createElement('button');
+    badge.className = 'parse-error-badge';
+    badge.title = bm.parseError;
+    badge.innerHTML = svgWarn() + '<span>Błąd etykiet</span>';
+    badge.addEventListener('click', (e) => { e.stopPropagation(); openTagsErrorPage(bm); });
+    cardBody.appendChild(badge);
+  }
+
+  // Action overlay (on hover)
+  const actions = document.createElement('div');
+  actions.className = 'bm-card-actions';
+
+  const similarBtn = makeActionBtn('Pokaż podobne', svgSimilar());
+  if (activeSimilarTo?.id === bm.id) similarBtn.classList.add('bm-action--active');
+  similarBtn.addEventListener('click', (e) => { e.stopPropagation(); setSimilarFilter(bm); });
+
+  const labelBtn = makeActionBtn('Etykiety', svgLabel());
+  labelBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleTagEditor(bm, card, labelBtn); });
+
+  const editBtn = makeActionBtn('Edytuj', svgEdit());
+  editBtn.addEventListener('click', (e) => { e.stopPropagation(); startEdit(bm, card); });
+
+  const delBtn = makeActionBtn('Usuń', svgTrash());
+  delBtn.classList.add('bm-action--danger');
+  delBtn.addEventListener('click', (e) => { e.stopPropagation(); confirmDelete(bm.id, card); });
+
+  actions.appendChild(similarBtn);
+  actions.appendChild(labelBtn);
+  actions.appendChild(editBtn);
+  actions.appendChild(delBtn);
+
+  card.appendChild(cardHeader);
+  card.appendChild(cardBody);
+  card.appendChild(actions);
+  return card;
 }
 
 function renderGrouped(list) {
@@ -551,6 +672,11 @@ function buildTagChips(bm) {
 }
 
 function refreshRowTags(bm, row) {
+  if (row.classList.contains('bm-card')) {
+    // In grid mode, rebuild the whole card
+    row.replaceWith(createCard(bm));
+    return;
+  }
   const link = row.querySelector('.bm-link');
   link.querySelector('.bm-tags')?.remove();
   link.querySelector('.parse-error-badge')?.remove();
@@ -653,9 +779,13 @@ function startEdit(bm, row) {
   const save = document.createElement('button');
   save.type = 'submit'; save.className = 'edit-save'; save.textContent = 'Zapisz';
 
+  const isCard = row.classList.contains('bm-card');
   const cancel = document.createElement('button');
   cancel.type = 'button'; cancel.className = 'edit-cancel'; cancel.textContent = 'Anuluj';
-  cancel.addEventListener('click', () => { row.classList.remove('bm-row--editing'); row.replaceWith(createRow(bm)); });
+  cancel.addEventListener('click', () => {
+    row.classList.remove('bm-row--editing');
+    row.replaceWith(isCard ? createCard(bm) : createRow(bm));
+  });
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -667,7 +797,7 @@ function startEdit(bm, row) {
       historyPush(snapshot);
       bm.title = newTitle; bm.url = newUrl; bm.rawTitle = newRaw;
       row.classList.remove('bm-row--editing');
-      row.replaceWith(createRow(bm));
+      row.replaceWith(isCard ? createCard(bm) : createRow(bm));
       showToast(`Zapisano „${newTitle}"`, 'ok', () => {
         undoHistoryEntry(snapshot, () => {
           chrome.bookmarks.getTree((tree) => {
