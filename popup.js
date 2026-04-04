@@ -49,6 +49,7 @@ const HISTORY_KEY = 'bm_history';
 const HISTORY_MAX = 30;
 
 function historyPush(entry) {
+  if (!chrome.storage?.local) return;
   chrome.storage.local.get(HISTORY_KEY, (data) => {
     const list = data[HISTORY_KEY] || [];
     list.unshift({ ...entry, ts: Date.now() });
@@ -58,6 +59,7 @@ function historyPush(entry) {
 }
 
 function historyRemoveByTs(ts) {
+  if (!chrome.storage?.local) return;
   chrome.storage.local.get(HISTORY_KEY, (data) => {
     const list = (data[HISTORY_KEY] || []).filter((e) => e.ts !== ts);
     chrome.storage.local.set({ [HISTORY_KEY]: list });

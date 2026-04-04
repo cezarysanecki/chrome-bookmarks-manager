@@ -37,6 +37,7 @@ const HISTORY_KEY = 'bm_history';
 const HISTORY_MAX = 30;
 
 function historyPush(entry) {
+  if (!chrome.storage?.local) return;
   chrome.storage.local.get(HISTORY_KEY, (data) => {
     const list = data[HISTORY_KEY] || [];
     list.unshift({ ...entry, ts: Date.now() });
@@ -46,6 +47,7 @@ function historyPush(entry) {
 }
 
 function historyRemoveByTs(ts) {
+  if (!chrome.storage?.local) return;
   chrome.storage.local.get(HISTORY_KEY, (data) => {
     const list = (data[HISTORY_KEY] || []).filter((e) => e.ts !== ts);
     chrome.storage.local.set({ [HISTORY_KEY]: list }, renderHistory);
@@ -80,6 +82,7 @@ function historyLabel(entry) {
 function renderHistory() {
   const historyListEl = document.getElementById('history-list');
   if (!historyListEl) return;
+  if (!chrome.storage?.local) return;
   chrome.storage.local.get(HISTORY_KEY, (data) => {
     const entries = data[HISTORY_KEY] || [];
     historyListEl.innerHTML = '';
@@ -119,6 +122,10 @@ function renderHistory() {
       historyListEl.appendChild(li);
     }
   });
+}
+
+function saveSettings() {
+  if (chrome.storage?.local) chrome.storage.local.set({ bm_settings: settings });
 }
 
 // --- Init ---
@@ -218,19 +225,19 @@ settingsOverlay.addEventListener('click', (e) => {
 
 document.getElementById('setting-favicons').addEventListener('change', (e) => {
   settings.favicons = e.target.checked;
-  chrome.storage.local.set({ bm_settings: settings });
+  saveSettings();
   renderAll();
 });
 
 document.getElementById('setting-ai-enabled').addEventListener('change', (e) => {
   settings.aiEnabled = e.target.checked;
-  chrome.storage.local.set({ bm_settings: settings });
+  saveSettings();
   renderAll();
 });
 
 document.getElementById('setting-dead-links').addEventListener('change', (e) => {
   settings.deadLinkCheck = e.target.checked;
-  chrome.storage.local.set({ bm_settings: settings });
+  saveSettings();
 });
 
 document.getElementById('btn-check-now').addEventListener('click', () => {
@@ -242,7 +249,7 @@ document.getElementById('btn-check-now').addEventListener('click', () => {
 const openaiKeyInput = document.getElementById('setting-openai-key');
 openaiKeyInput.addEventListener('change', () => {
   settings.openaiKey = openaiKeyInput.value.trim();
-  chrome.storage.local.set({ bm_settings: settings });
+  saveSettings();
 });
 
 document.getElementById('btn-show-key').addEventListener('click', () => {
