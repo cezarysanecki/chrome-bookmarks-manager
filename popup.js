@@ -1,0 +1,851 @@
+// TODO (future iterations):
+//   - Find similar bookmarks (by domain, keywords)
+//   - AI-powered automatic categorization
+
+// Tags are stored directly in the bookmark title using the format:
+//   "Display Title | tag1, tag2, tag3"
+// No external storage needed — tags travel with the bookmark.
+
+'use strict';
+
+let allBookmarks = [];   // [{ id, rawTitle, title, url, tags[] }]
+let currentQuery = '';
+let activeTagFilter = null;
+let activeSimilarTo = null;  // bm object | null
+
+// --- DOM refs ---
+const searchInput    = document.getElementById('search');
+const clearBtn       = document.getElementById('clear-search');
+const bookmarksList  = document.getElementById('bookmarks-list');
+const emptyState     = document.getElementById('empty-state');
+const emptyMessage   = document.getElementById('empty-message');
+const toastEl        = document.getElementById('toast');
+const importFileEl   = document.getElementById('import-file');
+const resultsCount   = document.getElementById('results-count');
+const tagFilterBar      = document.getElementById('tag-filter-bar');
+const tagFilterLabel    = document.getElementById('tag-filter-label');
+const tagFilterClear    = document.getElementById('tag-filter-clear');
+const similarFilterBar  = document.getElementById('similar-filter-bar');
+const similarFilterLabel= document.getElementById('similar-filter-label');
+const similarFilterClear= document.getElementById('similar-filter-clear');
+const modalOverlay   = document.getElementById('modal-overlay');
+const modalDesc      = document.getElementById('modal-desc');
+const modalCancel    = document.getElementById('modal-cancel');
+const modalConfirm   = document.getElementById('modal-confirm');
+
+// --- Bootstrap ---
+chrome.bookmarks.getTree((tree) => {
+  allBookmarks = flattenBookmarks(tree);
+  renderBookmarks(filterBookmarks(''), '');
+});
+
+// --- Export / Import ---
+document.getElementById('btn-fullpage').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('fullpage.html') });
+});
+document.getElementById('btn-export').addEventListener('click', exportBookmarks);
+document.getElementById('btn-import').addEventListener('click', () => importFileEl.click());
+importFileEl.addEventListener('change', () => {
+  const file = importFileEl.files[0];
+  if (file) importBookmarks(file);
+  importFileEl.value = '';
+});
+
+// --- Search ---
+let debounceTimer;
+searchInput.addEventListener('input', () => {
+  const query = searchInput.value;
+  clearBtn.hidden = query.length === 0;
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    currentQuery = query;
+    renderBookmarks(filterBookmarks(query), query);
+  }, 300);
+});
+
+clearBtn.addEventListener('click', () => {
+  searchInput.value = '';
+  clearBtn.hidden = true;
+  currentQuery = '';
+  searchInput.focus();
+  renderBookmarks(filterBookmarks(''), '');
+});
+
+// --- Tag filter bar ---
+tagFilterClear.addEventListener('click', () => {
+  activeTagFilter = null;
+  tagFilterBar.hidden = true;
+  renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+});
+
+// --- Similar filter bar ---
+similarFilterClear.addEventListener('click', () => {
+  activeSimilarTo = null;
+  similarFilterBar.hidden = true;
+  renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+});
+
+// --- Title parsing ---
+
+/**
+ * Parse "Display Title | tag1, tag2" into { title, tags, parseError }.
+ * parseError is a human-readable string when the tag section is malformed,
+ * or null when everything is fine (including no tags at all).
+ *
+ * Rules that produce a parseError:
+ *   - " | " present but nothing (or only whitespace) follows it
+ *   - any individual tag is empty after trimming (e.g. "Title | , tag2")
+ *   - any tag contains a pipe character (nested separators)
+ */
+function parseTitle(raw) {
+  const sep = raw.indexOf(' | ');
+  if (sep === -1) return { title: raw, tags: [], parseError: null };
+
+  const title = raw.slice(0, sep).trim();
+  const rawTagSection = raw.slice(sep + 3);
+
+  if (!rawTagSection.trim()) {
+    return {
+      title,
+      tags: [],
+      parseError: `Sekcja etykiet jest pusta — usuń " | " lub dodaj etykietę`,
+    };
+  }
+
+  const parts = rawTagSection.split(',');
+  const emptyParts = parts.filter((t) => !t.trim());
+  if (emptyParts.length > 0) {
+    return {
+      title,
+      tags: parts.map((t) => t.trim()).filter(Boolean),
+      parseError: `Pusta etykieta w "${rawTagSection.trim()}" — usuń nadmiarowe przecinki`,
+    };
+  }
+
+  const tags = parts.map((t) => t.trim());
+  const withPipe = tags.filter((t) => t.includes('|'));
+  if (withPipe.length > 0) {
+    return {
+      title,
+      tags,
+      parseError: `Etykieta nie może zawierać "|": ${withPipe.map((t) => `"${t}"`).join(', ')}`,
+    };
+  }
+
+  return { title, tags, parseError: null };
+}
+
+/** Rebuild raw title from display title + tags array. */
+function buildRawTitle(title, tags) {
+  return tags.length > 0 ? `${title} | ${tags.join(', ')}` : title;
+}
+
+// --- Bookmarks ---
+
+function flattenBookmarks(nodes) {
+  const result = [];
+  for (const node of nodes) {
+    if (node.url) {
+      const raw = node.title || node.url;
+      const { title, tags, parseError } = parseTitle(raw);
+      result.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError });
+    }
+    if (node.children) result.push(...flattenBookmarks(node.children));
+  }
+  return result;
+}
+
+function filterBookmarks(query) {
+  let list = allBookmarks;
+  if (activeSimilarTo) {
+    const ids = new Set(findSimilar(activeSimilarTo).map((b) => b.id));
+    list = list.filter((bm) => ids.has(bm.id));
+  } else if (activeTagFilter) {
+    list = list.filter((bm) => bm.tags.includes(activeTagFilter));
+  }
+  if (!query.trim()) return list;
+  const q = query.toLowerCase();
+  return list.filter(
+    (bm) => bm.title.toLowerCase().includes(q) || bm.url.toLowerCase().includes(q)
+  );
+}
+
+function renderBookmarks(bookmarks, query) {
+  bookmarksList.innerHTML = '';
+
+  const total = allBookmarks.length;
+  const shown = bookmarks.length;
+
+  if (query.trim() || activeTagFilter) {
+    resultsCount.textContent = `${shown} z ${total} zakładek`;
+  } else {
+    resultsCount.textContent = total === 0 ? '' : `${total} zakładek`;
+  }
+
+  if (bookmarks.length === 0) {
+    bookmarksList.hidden = true;
+    emptyState.hidden = false;
+    emptyMessage.textContent = query.trim()
+      ? `Brak wyników dla „${query}"`
+      : activeTagFilter
+        ? `Brak zakładek z etykietą „${activeTagFilter}"`
+        : 'Brak zakładek';
+    return;
+  }
+
+  bookmarksList.hidden = false;
+  emptyState.hidden = true;
+
+  const fragment = document.createDocumentFragment();
+  for (const bm of bookmarks) fragment.appendChild(createBookmarkRow(bm, query));
+  bookmarksList.appendChild(fragment);
+}
+
+function updateResultsCount() {
+  const total = allBookmarks.length;
+  const shown = bookmarksList.children.length;
+  if (currentQuery.trim() || activeTagFilter) {
+    resultsCount.textContent = `${shown} z ${total} zakładek`;
+  } else {
+    resultsCount.textContent = total === 0 ? '' : `${total} zakładek`;
+  }
+}
+
+// --- Row ---
+
+function createBookmarkRow(bm, query) {
+  const li = document.createElement('li');
+  li.className = 'bookmark-row';
+  li.dataset.id = bm.id;
+
+  const a = document.createElement('a');
+  a.className = 'bookmark-link';
+  a.href = bm.url;
+  a.title = bm.url;
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    openBookmark(bm.url);
+  });
+
+  const titleEl = document.createElement('span');
+  titleEl.className = 'bookmark-title';
+  titleEl.innerHTML = highlight(bm.title, query);
+
+  const urlEl = document.createElement('span');
+  urlEl.className = 'bookmark-url';
+  urlEl.innerHTML = highlight(bm.url, query);
+
+  a.appendChild(titleEl);
+  a.appendChild(urlEl);
+
+  if (bm.parseError) {
+    const errBadge = document.createElement('button');
+    errBadge.className = 'parse-error-badge';
+    errBadge.title = bm.parseError;
+    errBadge.innerHTML = svgWarn() + '<span>Błąd etykiet</span>';
+    errBadge.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openTagsErrorPage(bm);
+    });
+    a.appendChild(errBadge);
+  } else if (bm.tags.length > 0) {
+    a.appendChild(buildTagChips(bm));
+  }
+
+  // Copy — always visible
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'copy-btn';
+  copyBtn.title = 'Kopiuj link';
+  copyBtn.innerHTML = svgCopy();
+  copyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyLink(bm.url, copyBtn);
+  });
+
+  // Hidden actions
+  const actions = document.createElement('div');
+  actions.className = 'bookmark-actions';
+
+  const similarBtn = document.createElement('button');
+  similarBtn.className = 'action-btn' + (activeSimilarTo?.id === bm.id ? ' action-btn--active' : '');
+  similarBtn.title = 'Pokaż podobne';
+  similarBtn.innerHTML = svgSimilar();
+  similarBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (activeSimilarTo?.id === bm.id) {
+      activeSimilarTo = null;
+      similarFilterBar.hidden = true;
+    } else {
+      activeSimilarTo = bm;
+      activeTagFilter = null;
+      tagFilterBar.hidden = true;
+      similarFilterLabel.textContent = bm.title;
+      similarFilterBar.hidden = false;
+    }
+    renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+  });
+
+  const labelBtn = document.createElement('button');
+  labelBtn.className = 'action-btn';
+  labelBtn.title = 'Etykiety';
+  labelBtn.innerHTML = svgLabel();
+  labelBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleTagEditor(bm, li, labelBtn);
+  });
+
+  const editBtn = document.createElement('button');
+  editBtn.className = 'action-btn';
+  editBtn.title = 'Edytuj';
+  editBtn.innerHTML = svgEdit();
+  editBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startEdit(bm, li);
+  });
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'action-btn action-btn--danger';
+  deleteBtn.title = 'Usuń';
+  deleteBtn.innerHTML = svgTrash();
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteBookmark(bm.id, li);
+  });
+
+  actions.appendChild(similarBtn);
+  actions.appendChild(labelBtn);
+  actions.appendChild(editBtn);
+  actions.appendChild(deleteBtn);
+
+  li.appendChild(a);
+  li.appendChild(copyBtn);
+  li.appendChild(actions);
+  return li;
+}
+
+// --- Tag chips ---
+
+function buildTagChips(bm) {
+  const container = document.createElement('div');
+  container.className = 'row-tags';
+  for (const tag of bm.tags) {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip' + (tag === activeTagFilter ? ' tag-chip--active' : '');
+    chip.textContent = tag;
+    chip.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      activeTagFilter = tag;
+      tagFilterLabel.textContent = tag;
+      tagFilterBar.hidden = false;
+      renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+    });
+    container.appendChild(chip);
+  }
+  return container;
+}
+
+function refreshRowTags(bm, li) {
+  const a = li.querySelector('.bookmark-link');
+  const existing = a.querySelector('.row-tags');
+  if (existing) existing.remove();
+  if (bm.tags.length > 0) a.appendChild(buildTagChips(bm));
+}
+
+// --- Tag editor ---
+
+function toggleTagEditor(bm, li, btn) {
+  const existing = li.querySelector('.tag-editor');
+  if (existing) {
+    existing.remove();
+    btn.classList.remove('action-btn--active');
+    return;
+  }
+
+  btn.classList.add('action-btn--active');
+
+  const editor = document.createElement('div');
+  editor.className = 'tag-editor';
+
+  const chipsRow = document.createElement('div');
+  chipsRow.className = 'tag-editor-chips';
+
+  function renderEditorChips() {
+    chipsRow.innerHTML = '';
+    chipsRow.hidden = bm.tags.length === 0;
+    for (const tag of bm.tags) {
+      const chip = document.createElement('span');
+      chip.className = 'tag-chip tag-chip--removable';
+      chip.textContent = tag;
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'tag-chip-remove';
+      removeBtn.innerHTML = '×';
+      removeBtn.title = 'Usuń etykietę';
+      removeBtn.addEventListener('click', () => {
+        bm.tags = bm.tags.filter((t) => t !== tag);
+        bm.rawTitle = buildRawTitle(bm.title, bm.tags);
+        chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+        renderEditorChips();
+        refreshRowTags(bm, li);
+        if (activeTagFilter === tag) {
+          activeTagFilter = null;
+          tagFilterBar.hidden = true;
+          renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+        }
+      });
+
+      chip.appendChild(removeBtn);
+      chipsRow.appendChild(chip);
+    }
+  }
+
+  renderEditorChips();
+
+  const inputRow = document.createElement('div');
+  inputRow.className = 'tag-input-row';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tag-input';
+  input.placeholder = 'Nowa etykieta…';
+  input.maxLength = 32;
+
+  function addTag() {
+    const tag = input.value.trim();
+    if (!tag || bm.tags.includes(tag)) { input.value = ''; return; }
+    bm.tags = [...bm.tags, tag];
+    bm.rawTitle = buildRawTitle(bm.title, bm.tags);
+    chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+    renderEditorChips();
+    refreshRowTags(bm, li);
+    input.value = '';
+    input.focus();
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addTag(); }
+    if (e.key === 'Escape') { editor.remove(); btn.classList.remove('action-btn--active'); }
+  });
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'tag-add-btn';
+  addBtn.textContent = '+';
+  addBtn.title = 'Dodaj etykietę';
+  addBtn.addEventListener('click', addTag);
+
+  inputRow.appendChild(input);
+  inputRow.appendChild(addBtn);
+  editor.appendChild(chipsRow);
+  editor.appendChild(inputRow);
+  li.appendChild(editor);
+
+  input.focus();
+}
+
+// --- Inline edit ---
+
+function startEdit(bm, li) {
+  li.innerHTML = '';
+  li.classList.add('bookmark-row--editing');
+
+  const form = document.createElement('form');
+  form.className = 'edit-form';
+
+  const titleInput = document.createElement('input');
+  titleInput.type = 'text';
+  titleInput.className = 'edit-input';
+  titleInput.value = bm.title;   // display title without tags
+  titleInput.placeholder = 'Tytuł';
+  titleInput.required = true;
+
+  const urlInput = document.createElement('input');
+  urlInput.type = 'url';
+  urlInput.className = 'edit-input';
+  urlInput.value = bm.url;
+  urlInput.placeholder = 'URL';
+  urlInput.required = true;
+
+  const btnRow = document.createElement('div');
+  btnRow.className = 'edit-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'submit';
+  saveBtn.className = 'edit-save';
+  saveBtn.textContent = 'Zapisz';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'edit-cancel';
+  cancelBtn.textContent = 'Anuluj';
+
+  cancelBtn.addEventListener('click', () => {
+    li.classList.remove('bookmark-row--editing');
+    li.replaceWith(createBookmarkRow(bm, currentQuery));
+  });
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const newTitle = titleInput.value.trim();
+    const newUrl = urlInput.value.trim();
+    if (!newTitle || !newUrl) return;
+
+    const newRaw = buildRawTitle(newTitle, bm.tags);
+    chrome.bookmarks.update(bm.id, { title: newRaw, url: newUrl }, () => {
+      bm.title = newTitle;
+      bm.url = newUrl;
+      bm.rawTitle = newRaw;
+      li.classList.remove('bookmark-row--editing');
+      li.replaceWith(createBookmarkRow(bm, currentQuery));
+      updateResultsCount();
+    });
+  });
+
+  btnRow.appendChild(saveBtn);
+  btnRow.appendChild(cancelBtn);
+  form.appendChild(titleInput);
+  form.appendChild(urlInput);
+  form.appendChild(btnRow);
+  li.appendChild(form);
+
+  titleInput.focus();
+  titleInput.select();
+}
+
+// --- Delete modal ---
+
+let pendingDelete = null;
+
+modalCancel.addEventListener('click', closeModal);
+modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !modalOverlay.hidden) closeModal();
+});
+
+modalConfirm.addEventListener('click', () => {
+  if (!pendingDelete) return;
+  const { id, li } = pendingDelete;
+  chrome.bookmarks.remove(id, () => {
+    allBookmarks = allBookmarks.filter((b) => b.id !== id);
+    li.remove();
+    updateResultsCount();
+    if (bookmarksList.children.length === 0) {
+      bookmarksList.hidden = true;
+      emptyState.hidden = false;
+      emptyMessage.textContent = currentQuery.trim()
+        ? `Brak wyników dla „${currentQuery}"`
+        : 'Brak zakładek';
+    }
+  });
+  closeModal();
+});
+
+function deleteBookmark(id, li) {
+  const bm = allBookmarks.find((b) => b.id === id);
+  modalDesc.textContent = bm ? bm.title : '';
+  pendingDelete = { id, li };
+  modalOverlay.hidden = false;
+  modalConfirm.focus();
+}
+
+function closeModal() {
+  modalOverlay.hidden = true;
+  pendingDelete = null;
+}
+
+// --- Open bookmark ---
+
+const ALLOWED_PROTOCOLS = ['http:', 'https:', 'ftp:', 'file:'];
+
+function openBookmark(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    openErrorPage(url);
+    return;
+  }
+  if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
+    openErrorPage(url);
+    return;
+  }
+  chrome.tabs.create({ url });
+}
+
+function openErrorPage(badUrl) {
+  const base = chrome.runtime.getURL('error.html');
+  chrome.tabs.create({ url: `${base}?type=url&value=${encodeURIComponent(badUrl)}` });
+}
+
+function openTagsErrorPage(bm) {
+  const base = chrome.runtime.getURL('error.html');
+  const params = new URLSearchParams({
+    type: 'tags',
+    value: bm.rawTitle,
+    reason: bm.parseError,
+  });
+  chrome.tabs.create({ url: `${base}?${params}` });
+}
+
+// --- Copy ---
+
+function copyLink(url, btn) {
+  navigator.clipboard.writeText(url).then(() => {
+    const original = btn.innerHTML;
+    btn.innerHTML = svgCheck();
+    btn.classList.add('copy-btn--copied');
+    setTimeout(() => {
+      btn.innerHTML = original;
+      btn.classList.remove('copy-btn--copied');
+    }, 1500);
+  });
+}
+
+// --- Highlight & escape ---
+
+function highlight(text, query) {
+  const escaped = escapeHtml(text);
+  if (!query.trim()) return escaped;
+  const escapedQuery = escapeHtml(query);
+  const regex = new RegExp(escapeRegex(escapedQuery), 'gi');
+  return escaped.replace(regex, '<mark>$&</mark>');
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// --- SVG icons ---
+
+function svgEdit() {
+  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+function svgTrash() {
+  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 6h12M8 6V4h4v2M7 6v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+function svgCopy() {
+  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="7" y="7" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+    <path d="M13 7V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function svgCheck() {
+  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M4 10l5 5 7-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// --- Similarity ---
+
+function findSimilar(bm) {
+  const host  = urlHostname(bm.url);
+  const words = sigWords(bm.title);
+  return allBookmarks.filter((other) => {
+    if (other.id === bm.id) return false;
+    if (host && urlHostname(other.url) === host) return true;
+    return sigWords(other.title).filter((w) => words.includes(w)).length >= 2;
+  });
+}
+
+function urlHostname(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch { return null; }
+}
+
+function sigWords(title) {
+  return [...new Set(title.toLowerCase().split(/[\s\-_/.,]+/).filter((w) => w.length >= 4))];
+}
+
+function svgSimilar() {
+  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="5" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+    <circle cx="15" cy="5" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+    <circle cx="15" cy="15" r="2.5" stroke="currentColor" stroke-width="1.4"/>
+    <path d="M7.5 10h2M9.5 10l3-4M9.5 10l3 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function svgWarn() {
+  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 7v4M10 13h.01M8.57 2.9L1.52 15a1.67 1.67 0 0 0 1.43 2.5h14.1A1.67 1.67 0 0 0 18.48 15L11.43 2.9a1.67 1.67 0 0 0-2.86 0z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+function svgLabel() {
+  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M3 10L10 3h7v7l-7 7-7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+    <circle cx="13.5" cy="6.5" r="1" fill="currentColor"/>
+  </svg>`;
+}
+
+// --- Export ---
+
+function exportBookmarks() {
+  const rows = [['title', 'url', 'tags']];
+  for (const bm of allBookmarks) {
+    rows.push([bm.title, bm.url, bm.tags.join(';')]);
+  }
+  const csv = rows.map(csvRow).join('\r\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bookmarks-${dateStamp()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`Wyeksportowano ${allBookmarks.length} zakładek`, 'ok');
+}
+
+// --- Import ---
+
+async function importBookmarks(file) {
+  let text;
+  try {
+    text = await file.text();
+  } catch {
+    showToast('Nie można odczytać pliku', 'err');
+    return;
+  }
+
+  const rows = parseCsv(text);
+  if (rows.length < 2) {
+    showToast('Plik jest pusty lub ma nieprawidłowy format', 'warn');
+    return;
+  }
+
+  const header = rows[0].map((h) => h.toLowerCase().trim());
+  const titleIdx = header.indexOf('title');
+  const urlIdx   = header.indexOf('url');
+  const tagsIdx  = header.indexOf('tags');
+
+  if (titleIdx === -1 || urlIdx === -1) {
+    showToast('Brak kolumn "title" lub "url" w nagłówku', 'err');
+    return;
+  }
+
+  const dataRows = rows.slice(1).filter((r) => r[urlIdx]?.trim());
+  let added = 0, skipped = 0;
+
+  for (const row of dataRows) {
+    const url   = row[urlIdx]?.trim();
+    const title = row[titleIdx]?.trim() || url;
+    const tags  = tagsIdx !== -1
+      ? (row[tagsIdx] || '').split(';').map((t) => t.trim()).filter(Boolean)
+      : [];
+
+    // Skip duplicates already in allBookmarks
+    if (allBookmarks.some((b) => b.url === url)) { skipped++; continue; }
+
+    const rawTitle = buildRawTitle(title, tags);
+    try {
+      await new Promise((resolve, reject) =>
+        chrome.bookmarks.create({ title: rawTitle, url }, (bm) =>
+          chrome.runtime.lastError ? reject() : resolve(bm)
+        )
+      );
+      added++;
+    } catch {
+      skipped++;
+    }
+  }
+
+  // Reload list
+  chrome.bookmarks.getTree((tree) => {
+    allBookmarks = flattenBookmarks(tree);
+    renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+  });
+
+  if (added === 0) {
+    showToast(`Nic nie dodano — ${skipped} pominiętych (duplikaty)`, 'warn');
+  } else {
+    const msg = skipped > 0
+      ? `Dodano ${added}, pominięto ${skipped} (duplikaty)`
+      : `Zaimportowano ${added} zakładek`;
+    showToast(msg, 'ok');
+  }
+}
+
+// --- CSV helpers ---
+
+/** Encode a single CSV row (RFC 4180). */
+function csvRow(fields) {
+  return fields.map((f) => {
+    const s = String(f ?? '');
+    return (s.includes(',') || s.includes('"') || s.includes('\n'))
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  }).join(',');
+}
+
+/**
+ * Parse CSV text into a 2-D array of strings (RFC 4180, UTF-8 with optional BOM).
+ * Handles quoted fields, embedded commas, newlines and doubled-quote escapes.
+ */
+function parseCsv(text) {
+  // Strip BOM if present
+  const src = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
+  const rows = [];
+  let row = [], field = '', inQuotes = false, i = 0;
+
+  while (i < src.length) {
+    const ch = src[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (src[i + 1] === '"') { field += '"'; i += 2; continue; } // escaped quote
+        inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        row.push(field); field = '';
+      } else if (ch === '\r' || ch === '\n') {
+        if (ch === '\r' && src[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.some((f) => f !== '')) rows.push(row);
+        row = [];
+      } else {
+        field += ch;
+      }
+    }
+    i++;
+  }
+  row.push(field);
+  if (row.some((f) => f !== '')) rows.push(row);
+  return rows;
+}
+
+// --- Toast ---
+
+let toastTimer;
+function showToast(msg, type = 'ok') {
+  toastEl.textContent = msg;
+  toastEl.className = `toast toast--${type}`;
+  toastEl.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.hidden = true; }, 3500);
+}
+
+// --- Date stamp for filename ---
+function dateStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}

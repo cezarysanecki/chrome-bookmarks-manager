@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bookmarks Manager</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="header-row">
+        <h1>Zakładki</h1>
+        <div class="header-actions">
+          <button id="btn-import" class="header-btn" title="Importuj z CSV">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Import
+          </button>
+          <button id="btn-fullpage" class="header-btn" title="Otwórz pełny widok">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.4"/>
+              <rect x="11" y="3" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.4"/>
+              <rect x="3" y="11" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.4"/>
+              <rect x="11" y="11" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.4"/>
+            </svg>
+            Widok
+          </button>
+          <button id="btn-export" class="header-btn" title="Eksportuj do CSV">
+            <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 13V3M6 7l4-4 4 4M4 15h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Eksport
+          </button>
+        </div>
+      </div>
+      <input type="file" id="import-file" accept=".csv" hidden>
+      <div class="search-wrapper">
+        <svg class="search-icon" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M13 13L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input
+          type="text"
+          id="search"
+          placeholder="Szukaj zakładek..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="clear-search" class="clear-btn" title="Wyczyść" hidden>
+          <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5 5L15 15M15 5L5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+      <div class="results-count" id="results-count"></div>
+      <div id="tag-filter-bar" class="tag-filter-bar" hidden>
+        Etykieta: <span id="tag-filter-label" class="tag-filter-label"></span>
+        <button id="tag-filter-clear" class="tag-filter-clear" title="Wyczyść filtr">✕</button>
+      </div>
+      <div id="similar-filter-bar" class="tag-filter-bar tag-filter-bar--similar" hidden>
+        Podobne do: <span id="similar-filter-label" class="tag-filter-label tag-filter-label--similar"></span>
+        <button id="similar-filter-clear" class="tag-filter-clear" title="Wyczyść filtr">✕</button>
+      </div>
+    </header>
+
+    <main>
+      <ul id="bookmarks-list" class="bookmarks-list"></ul>
+      <div id="empty-state" class="empty-state" hidden>
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 8h24a2 2 0 0 1 2 2v28l-14-7-14 7V10a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M20 20h8M24 16v8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <p id="empty-message">Brak zakładek</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Delete confirmation modal -->
+  <div id="modal-overlay" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 7h16M6 7V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v2M9 7v11M12 7v11M15 7v11M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <h2 id="modal-title">Usunąć zakładkę?</h2>
+      <p id="modal-desc" class="modal-desc"></p>
+      <div class="modal-buttons">
+        <button id="modal-cancel" class="modal-btn modal-btn--cancel">Anuluj</button>
+        <button id="modal-confirm" class="modal-btn modal-btn--danger">Usuń</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
