@@ -224,6 +224,7 @@ h1 {
   position: relative;
   display: flex;
   align-items: center;
+  margin-top: 10px;
 }
 
 .search-icon {
@@ -346,8 +347,9 @@ main::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 7px;
-  padding: 5px 8px;
+  margin-top: 10px;
+  margin-bottom: 2px;
+  padding: 6px 10px;
   background: rgba(255,180,50,.08);
   border: 1px solid rgba(255,180,50,.25);
   border-radius: 6px;
