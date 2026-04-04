@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Błąd zakładki</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1e1e2e;
+      color: #e2e2f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      padding: 24px;
+    }
+
+    .card {
+      background: #2a2a3d;
+      border: 1px solid #3a3a55;
+      border-radius: 12px;
+      padding: 32px 36px;
+      max-width: 580px;
+      width: 100%;
+    }
+
+    .icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+    }
+    .icon.icon--url   { background: rgba(255,107,107,.12); color: #ff6b6b; }
+    .icon.icon--tags  { background: rgba(255,180,50,.12);  color: #ffb432; }
+    .icon svg { width: 24px; height: 24px; }
+
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+
+    .subtitle { font-size: 13px; color: #8888a8; margin-bottom: 20px; line-height: 1.5; }
+
+    .label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #8888a8;
+      margin-bottom: 6px;
+    }
+
+    .value-box {
+      background: #1e1e2e;
+      border: 1px solid #3a3a55;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      word-break: break-all;
+      margin-bottom: 16px;
+    }
+    .value-box.value-box--url  { color: #ff6b6b; }
+    .value-box.value-box--raw  { color: #e2e2f0; }
+    .value-box.value-box--warn { color: #ffb432; }
+
+    .hint {
+      font-size: 12px;
+      color: #8888a8;
+      line-height: 1.6;
+      margin-top: 4px;
+    }
+    .hint strong { color: #c8c0ff; }
+
+    .example {
+      background: #1e1e2e;
+      border: 1px solid #3a3a55;
+      border-left: 3px solid #4caf7d;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      color: #4caf7d;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="card"></div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const type   = params.get('type') || 'url';
+    const value  = params.get('value') || '';
+    const reason = params.get('reason') || '';
+    const card   = document.getElementById('card');
+
+    function el(tag, cls, html) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (html !== undefined) e.innerHTML = html;
+      return e;
+    }
+
+    if (type === 'url') {
+      card.appendChild(el('div', 'icon icon--url',
+        `<svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      ));
+      card.appendChild(el('h1', null, 'Nie można otworzyć zakładki'));
+      card.appendChild(el('p', 'subtitle', 'Adres URL tej zakładki jest nieprawidłowy lub używa niedozwolonego protokołu.'));
+      card.appendChild(el('p', 'label', 'Problematyczny adres'));
+      card.appendChild(Object.assign(el('div', 'value-box value-box--url', escapeHtml(value))));
+      card.appendChild(el('p', 'hint',
+        'Otwórz <strong>Bookmarks Manager</strong>, znajdź tę zakładkę i popraw jej adres URL.'
+      ));
+    } else {
+      card.appendChild(el('div', 'icon icon--tags',
+        `<svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      ));
+      card.appendChild(el('h1', null, 'Nieprawidłowy format etykiet'));
+      card.appendChild(el('p', 'subtitle', 'Nazwa zakładki zawiera sekcję etykiet (<code> | </code>), ale jej format jest błędny.'));
+      card.appendChild(el('p', 'label', 'Pełna nazwa zakładki'));
+      card.appendChild(el('div', 'value-box value-box--raw', escapeHtml(value)));
+      card.appendChild(el('p', 'label', 'Przyczyna'));
+      card.appendChild(el('div', 'value-box value-box--warn', escapeHtml(reason)));
+      card.appendChild(el('p', 'hint',
+        'Poprawny format to: <strong>Tytuł | etykieta1, etykieta2</strong>'
+      ));
+      card.appendChild(el('div', 'example', escapeHtml('GitHub | dev, tools')));
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+  </script>
+</body>
+</html>
