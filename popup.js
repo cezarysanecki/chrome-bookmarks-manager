@@ -40,7 +40,7 @@ const modalCancel    = document.getElementById('modal-cancel');
 const modalConfirm   = document.getElementById('modal-confirm');
 
 let showOnlyDuplicates = false;
-let settings = { favicons: false };
+let settings = { favicons: false, aiEnabled: false, openaiKey: '' };
 
 // --- History (chrome.storage.local) ---
 
@@ -79,7 +79,7 @@ function undoHistoryEntry(entry, onDone) {
 
 // --- Bootstrap ---
 chrome.storage.local.get('bm_settings', (data) => {
-  settings = { favicons: false, ...(data.bm_settings || {}) };
+  settings = { favicons: false, aiEnabled: false, openaiKey: '', ...(data.bm_settings || {}) };
   chrome.bookmarks.getTree((tree) => {
     allBookmarks = flattenBookmarks(tree);
     renderBookmarks(filterBookmarks(''), '');
@@ -444,6 +444,18 @@ function createBookmarkRow(bm, query) {
     e.stopPropagation();
     deleteBookmark(bm.id, li);
   });
+
+  if (settings.aiEnabled) {
+    const aiBtn = document.createElement('button');
+    aiBtn.className = 'action-btn';
+    aiBtn.title = 'Sugestie etykiet AI';
+    aiBtn.innerHTML = svgAI();
+    aiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      runAISuggest(bm, li, aiBtn, (updated) => refreshRowTags(updated, li));
+    });
+    actions.appendChild(aiBtn);
+  }
 
   actions.appendChild(similarBtn);
   actions.appendChild(labelBtn);
@@ -856,6 +868,100 @@ function svgLabel() {
     <path d="M3 10L10 3h7v7l-7 7-7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
     <circle cx="13.5" cy="6.5" r="1" fill="currentColor"/>
   </svg>`;
+}
+
+function svgAI() {
+  return `<svg viewBox="0 0 20 20" fill="none"><path d="M10 2l1.5 4.5L16 8l-4.5 1.5L10 15l-1.5-4.5L4 8l4.5-1.5L10 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M16 2l.8 2L19 5l-2.2.8L16 8l-.8-2.2L13 5l2.2-.8L16 2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>`;
+}
+
+// --- AI tag suggestions ---
+
+async function suggestTagsAI(bm) {
+  if (!settings.openaiKey) {
+    showToast('Ustaw klucz OpenAI w widoku pełnym (Ustawienia)', 'warn');
+    return null;
+  }
+  const prompt =
+    `Zaproponuj 2-5 krótkich etykiet (1-2 słowa każda) dla tej zakładki.\n` +
+    `Tytuł: ${bm.title}\nURL: ${bm.url}\n` +
+    (bm.tags.length ? `Istniejące etykiety: ${bm.tags.join(', ')}\n` : '') +
+    `Odpowiedź: tylko lista etykiet rozdzielona przecinkami, bez dodatkowego tekstu.`;
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${settings.openaiKey}` },
+    body: JSON.stringify({ model: 'gpt-4o-mini', messages: [{ role: 'user', content: prompt }], max_tokens: 60, temperature: 0.3 }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return data.choices[0].message.content
+    .trim().split(',')
+    .map((t) => t.trim().replace(/^["']|["']$/g, ''))
+    .filter((t) => t && !bm.tags.includes(t));
+}
+
+function showAISuggestPanel(bm, li, onTagAdded) {
+  li.querySelector('.ai-suggest-panel')?.remove();
+
+  const panel = document.createElement('div');
+  panel.className = 'ai-suggest-panel';
+
+  const label = document.createElement('span');
+  label.className = 'ai-suggest-label';
+  label.textContent = 'AI:';
+  panel.appendChild(label);
+
+  const chipsWrap = document.createElement('div');
+  chipsWrap.className = 'ai-suggest-chips';
+
+  function addChip(tag) {
+    const chip = document.createElement('button');
+    chip.className = 'ai-chip';
+    chip.textContent = `+ ${tag}`;
+    chip.addEventListener('click', () => {
+      if (bm.tags.includes(tag)) { chip.remove(); return; }
+      const rawTitleBefore = bm.rawTitle;
+      bm.tags = [...bm.tags, tag];
+      bm.rawTitle = buildRawTitle(bm.title, bm.tags);
+      chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+      historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
+      chip.remove();
+      onTagAdded(bm);
+      if (!chipsWrap.children.length) panel.remove();
+    });
+    chipsWrap.appendChild(chip);
+  }
+
+  panel.appendChild(chipsWrap);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'ai-suggest-dismiss';
+  dismiss.textContent = '✕';
+  dismiss.addEventListener('click', () => panel.remove());
+  panel.appendChild(dismiss);
+
+  li.appendChild(panel);
+  return { addChip };
+}
+
+async function runAISuggest(bm, li, aiBtn, onTagAdded) {
+  aiBtn.disabled = true;
+  aiBtn.classList.add('action-btn--loading');
+  try {
+    const tags = await suggestTagsAI(bm);
+    if (!tags || tags.length === 0) { showToast('Brak nowych sugestii', 'warn'); return; }
+    const { addChip } = showAISuggestPanel(bm, li, onTagAdded);
+    tags.forEach(addChip);
+  } catch (err) {
+    showToast(`Błąd AI: ${err.message}`, 'err');
+  } finally {
+    aiBtn.disabled = false;
+    aiBtn.classList.remove('action-btn--loading');
+  }
 }
 
 // --- Export ---

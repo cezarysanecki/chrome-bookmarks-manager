@@ -844,6 +844,91 @@ html, body { height: 100%; background: var(--bg); color: var(--text);
   margin: 2px 0;
 }
 
+.setting-row--column { flex-direction: column; gap: 8px; }
+
+.api-key-row {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.api-key-input {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: monospace;
+  outline: none;
+}
+.api-key-input:focus { border-color: var(--accent); }
+.api-key-input::placeholder { color: var(--text-muted); font-family: inherit; }
+
+.btn-show-key {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.btn-show-key svg { width: 14px; height: 14px; }
+.btn-show-key:hover { color: var(--text); border-color: var(--accent); }
+
+/* ── AI suggest panel ────────────────────────────────── */
+.ai-suggest-panel {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  background: rgba(124,106,247,.05);
+}
+
+.ai-suggest-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.ai-suggest-chips { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
+
+.ai-chip {
+  background: var(--accent-dim);
+  border: 1px solid rgba(124,106,247,.3);
+  border-radius: 20px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 9px;
+  transition: background .12s;
+}
+.ai-chip:hover { background: rgba(124,106,247,.3); }
+
+.ai-suggest-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  margin-left: auto;
+}
+.ai-suggest-dismiss:hover { color: var(--text); }
+
+/* Loading spinner on AI button */
+.bm-action--loading { opacity: .5; cursor: wait; }
+
 /* "Sprawdź teraz" button */
 .btn-check-now {
   align-self: flex-start;

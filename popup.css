@@ -96,6 +96,51 @@ h1 {
   border-color: var(--accent);
 }
 
+/* AI suggest panel */
+.ai-suggest-panel {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  background: rgba(124,106,247,.05);
+}
+
+.ai-suggest-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.ai-suggest-chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+
+.ai-chip {
+  background: var(--accent-dim);
+  border: 1px solid rgba(124,106,247,.3);
+  border-radius: 20px;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 8px;
+}
+.ai-chip:hover { background: rgba(124,106,247,.3); }
+
+.ai-suggest-dismiss {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  margin-left: auto;
+}
+
+.action-btn--loading { opacity: .5; cursor: wait; }
+
 /* Favicon in list */
 .bookmark-favicon {
   flex-shrink: 0;

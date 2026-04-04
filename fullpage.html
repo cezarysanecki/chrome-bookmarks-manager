@@ -132,6 +132,32 @@
         </div>
 
         <button id="btn-check-now" class="btn-check-now">Sprawdź teraz</button>
+
+        <hr class="settings-divider">
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">Sugestie etykiet AI</span>
+            <span class="setting-desc">Dodaje przycisk AI przy każdej zakładce. Wymaga klucza OpenAI poniżej.</span>
+          </div>
+          <label class="toggle-switch" title="Włącz/wyłącz">
+            <input type="checkbox" id="setting-ai-enabled">
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="setting-row setting-row--column">
+          <div class="setting-info">
+            <span class="setting-label">Klucz OpenAI API</span>
+            <span class="setting-desc">Wymagany do sugestii etykiet AI. Przechowywany lokalnie w przeglądarce, nigdzie nie wysyłany poza OpenAI.</span>
+          </div>
+          <div class="api-key-row">
+            <input type="password" id="setting-openai-key" class="api-key-input" placeholder="sk-...">
+            <button id="btn-show-key" class="btn-show-key" type="button" title="Pokaż/ukryj klucz">
+              <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M2 10c2-4 5-6 8-6s6 2 8 6c-2 4-5 6-8 6s-6-2-8-6z" stroke="currentColor" stroke-width="1.4"/></svg>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

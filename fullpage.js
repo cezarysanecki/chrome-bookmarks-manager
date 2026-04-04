@@ -8,7 +8,7 @@ let gridMode        = false;
 let activeSimilarTo = null;
 let currentSort     = 'default';
 let duplicatesMode  = false;
-let settings        = { favicons: false, deadLinkCheck: false };
+let settings        = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '' };
 let deadLinks       = new Set();   // URLs confirmed unreachable
 let checkRunning    = false;
 
@@ -122,9 +122,11 @@ function renderHistory() {
 
 // --- Init ---
 chrome.storage.local.get('bm_settings', (data) => {
-  settings = { favicons: false, deadLinkCheck: false, ...(data.bm_settings || {}) };
-  document.getElementById('setting-favicons').checked  = settings.favicons;
-  document.getElementById('setting-dead-links').checked = settings.deadLinkCheck;
+  settings = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '', ...(data.bm_settings || {}) };
+  document.getElementById('setting-favicons').checked    = settings.favicons;
+  document.getElementById('setting-dead-links').checked  = settings.deadLinkCheck;
+  document.getElementById('setting-ai-enabled').checked  = settings.aiEnabled;
+  document.getElementById('setting-openai-key').value    = settings.openaiKey;
 
   chrome.bookmarks.getTree((tree) => {
     allBookmarks = flattenBookmarks(tree);
@@ -206,6 +208,12 @@ document.getElementById('setting-favicons').addEventListener('change', (e) => {
   renderAll();
 });
 
+document.getElementById('setting-ai-enabled').addEventListener('change', (e) => {
+  settings.aiEnabled = e.target.checked;
+  chrome.storage.local.set({ bm_settings: settings });
+  renderAll();
+});
+
 document.getElementById('setting-dead-links').addEventListener('change', (e) => {
   settings.deadLinkCheck = e.target.checked;
   chrome.storage.local.set({ bm_settings: settings });
@@ -215,6 +223,122 @@ document.getElementById('btn-check-now').addEventListener('click', () => {
   settingsOverlay.hidden = true;
   checkDeadLinks();
 });
+
+// --- OpenAI key ---
+const openaiKeyInput = document.getElementById('setting-openai-key');
+openaiKeyInput.addEventListener('change', () => {
+  settings.openaiKey = openaiKeyInput.value.trim();
+  chrome.storage.local.set({ bm_settings: settings });
+});
+
+document.getElementById('btn-show-key').addEventListener('click', () => {
+  openaiKeyInput.type = openaiKeyInput.type === 'password' ? 'text' : 'password';
+});
+
+// --- AI tag suggestions ---
+
+async function suggestTagsAI(bm) {
+  if (!settings.openaiKey) {
+    showToast('Ustaw klucz OpenAI w Ustawieniach', 'warn');
+    return null;
+  }
+  const prompt =
+    `Zaproponuj 2-5 krótkich etykiet (1-2 słowa każda) dla tej zakładki.\n` +
+    `Tytuł: ${bm.title}\nURL: ${bm.url}\n` +
+    (bm.tags.length ? `Istniejące etykiety: ${bm.tags.join(', ')}\n` : '') +
+    `Odpowiedź: tylko lista etykiet rozdzielona przecinkami, bez dodatkowego tekstu.`;
+
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${settings.openaiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 60,
+      temperature: 0.3,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `HTTP ${res.status}`);
+  }
+
+  const data = await res.json();
+  return data.choices[0].message.content
+    .trim()
+    .split(',')
+    .map((t) => t.trim().replace(/^["']|["']$/g, ''))
+    .filter((t) => t && !bm.tags.includes(t));
+}
+
+function showAISuggestPanel(bm, container, onTagAdded) {
+  container.querySelector('.ai-suggest-panel')?.remove();
+
+  const panel = document.createElement('div');
+  panel.className = 'ai-suggest-panel';
+
+  const label = document.createElement('span');
+  label.className = 'ai-suggest-label';
+  label.textContent = 'AI:';
+  panel.appendChild(label);
+
+  const chipsWrap = document.createElement('div');
+  chipsWrap.className = 'ai-suggest-chips';
+
+  function addChip(tag) {
+    const chip = document.createElement('button');
+    chip.className = 'ai-chip';
+    chip.textContent = `+ ${tag}`;
+    chip.title = `Dodaj etykietę „${tag}"`;
+    chip.addEventListener('click', () => {
+      if (bm.tags.includes(tag)) { chip.remove(); return; }
+      const rawTitleBefore = bm.rawTitle;
+      bm.tags = [...bm.tags, tag];
+      bm.rawTitle = buildRawTitle(bm.title, bm.tags);
+      chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+      historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
+      chip.remove();
+      onTagAdded(bm);
+      if (!chipsWrap.children.length) panel.remove();
+    });
+    chipsWrap.appendChild(chip);
+  }
+
+  panel.appendChild(chipsWrap);
+
+  const dismiss = document.createElement('button');
+  dismiss.className = 'ai-suggest-dismiss';
+  dismiss.textContent = '✕';
+  dismiss.title = 'Odrzuć sugestie';
+  dismiss.addEventListener('click', () => panel.remove());
+  panel.appendChild(dismiss);
+
+  container.appendChild(panel);
+  return { chipsWrap, addChip };
+}
+
+async function runAISuggest(bm, container, aiBtn, onTagAdded) {
+  aiBtn.disabled = true;
+  aiBtn.classList.add('bm-action--loading');
+  try {
+    const tags = await suggestTagsAI(bm);
+    if (!tags || tags.length === 0) {
+      showToast('Brak nowych sugestii', 'warn');
+      return;
+    }
+    const { addChip } = showAISuggestPanel(bm, container, onTagAdded);
+    tags.forEach(addChip);
+  } catch (err) {
+    showToast(`Błąd AI: ${err.message}`, 'err');
+  } finally {
+    aiBtn.disabled = false;
+    aiBtn.classList.remove('bm-action--loading');
+  }
+}
 
 // --- Dead link checking ---
 
@@ -592,6 +716,12 @@ function createCard(bm) {
   const actions = document.createElement('div');
   actions.className = 'bm-card-actions';
 
+  if (settings.aiEnabled) {
+    const aiBtn = makeActionBtn('Sugestie etykiet AI', svgAI());
+    aiBtn.addEventListener('click', (e) => { e.stopPropagation(); runAISuggest(bm, card, aiBtn, () => refreshRowTags(bm, card)); });
+    actions.appendChild(aiBtn);
+  }
+
   const similarBtn = makeActionBtn('Pokaż podobne', svgSimilar());
   if (activeSimilarTo?.id === bm.id) similarBtn.classList.add('bm-action--active');
   similarBtn.addEventListener('click', (e) => { e.stopPropagation(); setSimilarFilter(bm); });
@@ -749,6 +879,12 @@ function createRow(bm) {
   // Hidden actions
   const actions = document.createElement('div');
   actions.className = 'bm-actions';
+
+  if (settings.aiEnabled) {
+    const aiBtn = makeActionBtn('Sugestie etykiet AI', svgAI());
+    aiBtn.addEventListener('click', (e) => { e.stopPropagation(); runAISuggest(bm, row, aiBtn, () => refreshRowTags(bm, row)); });
+    actions.appendChild(aiBtn);
+  }
 
   const similarBtn = makeActionBtn('Pokaż podobne', svgSimilar());
   if (activeSimilarTo?.id === bm.id) similarBtn.classList.add('bm-action--active');
@@ -1240,4 +1376,8 @@ function svgSimilar() {
 
 function svgWarn() {
   return `<svg viewBox="0 0 20 20" fill="none"><path d="M10 7v4M10 13h.01M8.57 2.9L1.52 15a1.67 1.67 0 0 0 1.43 2.5h14.1A1.67 1.67 0 0 0 18.48 15L11.43 2.9a1.67 1.67 0 0 0-2.86 0z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function svgAI() {
+  return `<svg viewBox="0 0 20 20" fill="none"><path d="M10 2l1.5 4.5L16 8l-4.5 1.5L10 15l-1.5-4.5L4 8l4.5-1.5L10 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M16 2l.8 2L19 5l-2.2.8L16 8l-.8-2.2L13 5l2.2-.8L16 2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>`;
 }
