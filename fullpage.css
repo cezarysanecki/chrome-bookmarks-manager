@@ -838,6 +838,12 @@ html, body { height: 100%; background: var(--bg); color: var(--text);
 }
 .setting-warning svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
 
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2px 0;
+}
+
 /* "Sprawdź teraz" button */
 .btn-check-now {
   align-self: flex-start;
@@ -851,6 +857,16 @@ html, body { height: 100%; background: var(--bg); color: var(--text);
   cursor: pointer;
 }
 .btn-check-now:hover { background: #6a59e0; }
+
+/* ── Favicon in list ────────────────────────────────── */
+.bm-row-favicon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-left: 10px;
+  object-fit: contain;
+  opacity: .85;
+}
 
 /* ── Dead link indicator ─────────────────────────────── */
 .bm-dead-badge {

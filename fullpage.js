@@ -8,7 +8,7 @@ let gridMode        = false;
 let activeSimilarTo = null;
 let currentSort     = 'default';
 let duplicatesMode  = false;
-let settings        = { deadLinkCheck: false };
+let settings        = { favicons: false, deadLinkCheck: false };
 let deadLinks       = new Set();   // URLs confirmed unreachable
 let checkRunning    = false;
 
@@ -122,7 +122,8 @@ function renderHistory() {
 
 // --- Init ---
 chrome.storage.local.get('bm_settings', (data) => {
-  settings = { deadLinkCheck: false, ...(data.bm_settings || {}) };
+  settings = { favicons: false, deadLinkCheck: false, ...(data.bm_settings || {}) };
+  document.getElementById('setting-favicons').checked  = settings.favicons;
   document.getElementById('setting-dead-links').checked = settings.deadLinkCheck;
 
   chrome.bookmarks.getTree((tree) => {
@@ -197,6 +198,12 @@ document.getElementById('settings-close').addEventListener('click', () => {
 });
 settingsOverlay.addEventListener('click', (e) => {
   if (e.target === settingsOverlay) settingsOverlay.hidden = true;
+});
+
+document.getElementById('setting-favicons').addEventListener('change', (e) => {
+  settings.favicons = e.target.checked;
+  chrome.storage.local.set({ bm_settings: settings });
+  renderAll();
 });
 
 document.getElementById('setting-dead-links').addEventListener('change', (e) => {
@@ -686,6 +693,16 @@ function createRow(bm) {
   const row = document.createElement('div');
   row.className = 'bm-row';
   row.dataset.id = bm.id;
+
+  if (settings.favicons) {
+    const host = urlHostname(bm.url);
+    const img = document.createElement('img');
+    img.className = 'bm-row-favicon';
+    img.src = host ? `https://www.google.com/s2/favicons?domain=${host}&sz=32` : '';
+    img.width = 14; img.height = 14; img.alt = '';
+    img.onerror = () => { img.style.display = 'none'; };
+    row.appendChild(img);
+  }
 
   const link = document.createElement('a');
   link.className = 'bm-link';

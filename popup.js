@@ -40,6 +40,7 @@ const modalCancel    = document.getElementById('modal-cancel');
 const modalConfirm   = document.getElementById('modal-confirm');
 
 let showOnlyDuplicates = false;
+let settings = { favicons: false };
 
 // --- History (chrome.storage.local) ---
 
@@ -77,10 +78,13 @@ function undoHistoryEntry(entry, onDone) {
 }
 
 // --- Bootstrap ---
-chrome.bookmarks.getTree((tree) => {
-  allBookmarks = flattenBookmarks(tree);
-  renderBookmarks(filterBookmarks(''), '');
-  checkDuplicates();
+chrome.storage.local.get('bm_settings', (data) => {
+  settings = { favicons: false, ...(data.bm_settings || {}) };
+  chrome.bookmarks.getTree((tree) => {
+    allBookmarks = flattenBookmarks(tree);
+    renderBookmarks(filterBookmarks(''), '');
+    checkDuplicates();
+  });
 });
 
 // --- Export / Import ---
@@ -335,6 +339,16 @@ function createBookmarkRow(bm, query) {
   const li = document.createElement('li');
   li.className = 'bookmark-row';
   li.dataset.id = bm.id;
+
+  if (settings.favicons) {
+    const host = urlHostname(bm.url);
+    const img = document.createElement('img');
+    img.className = 'bookmark-favicon';
+    img.src = host ? `https://www.google.com/s2/favicons?domain=${host}&sz=32` : '';
+    img.width = 14; img.height = 14; img.alt = '';
+    img.onerror = () => { img.style.display = 'none'; };
+    li.appendChild(img);
+  }
 
   const a = document.createElement('a');
   a.className = 'bookmark-link';
