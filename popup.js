@@ -78,14 +78,22 @@ function undoHistoryEntry(entry, onDone) {
 }
 
 // --- Bootstrap ---
-chrome.storage.local.get('bm_settings', (data) => {
-  settings = { favicons: false, aiEnabled: false, openaiKey: '', ...(data.bm_settings || {}) };
+function initBookmarks() {
   chrome.bookmarks.getTree((tree) => {
     allBookmarks = flattenBookmarks(tree);
     renderBookmarks(filterBookmarks(''), '');
     checkDuplicates();
   });
-});
+}
+
+if (chrome.storage?.local) {
+  chrome.storage.local.get('bm_settings', (data) => {
+    settings = { favicons: false, aiEnabled: false, openaiKey: '', ...(data.bm_settings || {}) };
+    initBookmarks();
+  });
+} else {
+  initBookmarks();
+}
 
 // --- Export / Import ---
 document.getElementById('btn-fullpage').addEventListener('click', () => {

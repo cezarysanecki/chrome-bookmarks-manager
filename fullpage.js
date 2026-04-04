@@ -121,13 +121,15 @@ function renderHistory() {
 }
 
 // --- Init ---
-chrome.storage.local.get('bm_settings', (data) => {
-  settings = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '', ...(data.bm_settings || {}) };
+function applySettings(s) {
+  settings = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '', ...s };
   document.getElementById('setting-favicons').checked    = settings.favicons;
   document.getElementById('setting-dead-links').checked  = settings.deadLinkCheck;
   document.getElementById('setting-ai-enabled').checked  = settings.aiEnabled;
   document.getElementById('setting-openai-key').value    = settings.openaiKey;
+}
 
+function initBookmarks() {
   chrome.bookmarks.getTree((tree) => {
     allBookmarks = flattenBookmarks(tree);
     renderSidebar();
@@ -135,7 +137,17 @@ chrome.storage.local.get('bm_settings', (data) => {
     renderHistory();
     if (settings.deadLinkCheck) checkDeadLinks();
   });
-});
+}
+
+if (chrome.storage?.local) {
+  chrome.storage.local.get('bm_settings', (data) => {
+    applySettings(data.bm_settings || {});
+    initBookmarks();
+  });
+} else {
+  applySettings({});
+  initBookmarks();
+}
 
 // --- Global keyboard shortcuts ---
 document.addEventListener('keydown', (e) => {
