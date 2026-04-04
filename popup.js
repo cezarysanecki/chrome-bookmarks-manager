@@ -224,9 +224,8 @@ function checkDuplicates() {
 
 function isStale(bm) {
   const stat = bookmarkStats[bm.id];
-  const now  = Date.now();
-  if (stat?.lastOpened) return now - stat.lastOpened > STALE_MS;
-  return bm.dateAdded > 0 && now - bm.dateAdded > STALE_MS;
+  if (!stat?.lastOpened) return false;
+  return Date.now() - stat.lastOpened > STALE_MS;
 }
 
 function checkStale() {
@@ -356,7 +355,7 @@ function flattenBookmarks(nodes) {
     if (node.url) {
       const raw = node.title || node.url;
       const { title, tags, parseError } = parseTitle(raw);
-      result.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError, dateAdded: node.dateAdded || 0 });
+      result.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError });
     }
     if (node.children) result.push(...flattenBookmarks(node.children));
   }

@@ -479,7 +479,7 @@ function flattenBookmarks(nodes) {
     if (node.url) {
       const raw = node.title || node.url;
       const { title, tags, parseError } = parseTitle(raw);
-      out.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError, dateAdded: node.dateAdded || 0 });
+      out.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError });
     }
     if (node.children) out.push(...flattenBookmarks(node.children));
   }
@@ -563,9 +563,8 @@ function renderSidebar() {
 
 function isStale(bm) {
   const stat = bookmarkStats[bm.id];
-  const now  = Date.now();
-  if (stat?.lastOpened) return now - stat.lastOpened > STALE_MS;
-  return bm.dateAdded > 0 && now - bm.dateAdded > STALE_MS;
+  if (!stat?.lastOpened) return false;
+  return Date.now() - stat.lastOpened > STALE_MS;
 }
 
 function makeTagItem(label, count, value) {
