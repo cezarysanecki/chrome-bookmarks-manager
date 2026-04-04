@@ -30,15 +30,22 @@ const tagFilterClear    = document.getElementById('tag-filter-clear');
 const similarFilterBar  = document.getElementById('similar-filter-bar');
 const similarFilterLabel= document.getElementById('similar-filter-label');
 const similarFilterClear= document.getElementById('similar-filter-clear');
+const dupBar            = document.getElementById('dup-bar');
+const dupBarText        = document.getElementById('dup-bar-text');
+const dupBarFilter      = document.getElementById('dup-bar-filter');
+const dupBarClear       = document.getElementById('dup-bar-clear');
 const modalOverlay   = document.getElementById('modal-overlay');
 const modalDesc      = document.getElementById('modal-desc');
 const modalCancel    = document.getElementById('modal-cancel');
 const modalConfirm   = document.getElementById('modal-confirm');
 
+let showOnlyDuplicates = false;
+
 // --- Bootstrap ---
 chrome.bookmarks.getTree((tree) => {
   allBookmarks = flattenBookmarks(tree);
   renderBookmarks(filterBookmarks(''), '');
+  checkDuplicates();
 });
 
 // --- Export / Import ---
@@ -79,6 +86,58 @@ tagFilterClear.addEventListener('click', () => {
   tagFilterBar.hidden = true;
   renderBookmarks(filterBookmarks(currentQuery), currentQuery);
 });
+
+// --- Duplicates ---
+dupBarFilter.addEventListener('click', () => {
+  showOnlyDuplicates = true;
+  activeTagFilter = null; activeSimilarTo = null;
+  tagFilterBar.hidden = true; similarFilterBar.hidden = true;
+  renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+});
+
+dupBarClear.addEventListener('click', () => {
+  showOnlyDuplicates = false;
+  dupBar.hidden = true;
+  renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+});
+
+function checkDuplicates() {
+  const groups = findDuplicateGroups();
+  const count  = groups.reduce((s, g) => s + g.length, 0);
+  if (count > 0) {
+    dupBarText.textContent = `${count} zakładek to duplikaty`;
+    dupBar.hidden = false;
+  }
+}
+
+const TRACKING_P = new Set([
+  'utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id',
+  'fbclid','gclid','gclsrc','dclid','msclkid','twclid','mc_cid','mc_eid','mkt_tok',
+]);
+
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url.toLowerCase());
+    u.hostname = u.hostname.replace(/^www\./, '');
+    u.pathname = u.pathname.replace(/\/+$/, '') || '/';
+    u.hash = '';
+    for (const k of [...u.searchParams.keys()]) {
+      if (TRACKING_P.has(k) || k.startsWith('utm_')) u.searchParams.delete(k);
+    }
+    u.searchParams.sort();
+    return u.toString();
+  } catch { return url.toLowerCase(); }
+}
+
+function findDuplicateGroups() {
+  const groups = new Map();
+  for (const bm of allBookmarks) {
+    const key = normalizeUrl(bm.url);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(bm);
+  }
+  return [...groups.values()].filter((g) => g.length > 1);
+}
 
 // --- Sort ---
 sortSelect.addEventListener('change', () => {
@@ -178,7 +237,10 @@ function sortBookmarks(list) {
 
 function filterBookmarks(query) {
   let list = allBookmarks;
-  if (activeSimilarTo) {
+  if (showOnlyDuplicates) {
+    const dupIds = new Set(findDuplicateGroups().flat().map((b) => b.id));
+    list = list.filter((bm) => dupIds.has(bm.id));
+  } else if (activeSimilarTo) {
     const ids = new Set(findSimilar(activeSimilarTo).map((b) => b.id));
     list = list.filter((bm) => ids.has(bm.id));
   } else if (activeTagFilter) {

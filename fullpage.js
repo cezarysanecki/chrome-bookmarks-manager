@@ -1,11 +1,12 @@
 'use strict';
 
 let allBookmarks = [];   // [{ id, rawTitle, title, url, tags[], parseError }]
-let currentQuery  = '';
-let activeTag     = null;
-let groupMode     = false;
+let currentQuery    = '';
+let activeTag       = null;
+let groupMode       = false;
 let activeSimilarTo = null;
-let currentSort   = 'default';
+let currentSort     = 'default';
+let duplicatesMode  = false;
 
 // --- DOM ---
 const searchEl       = document.getElementById('search');
@@ -177,6 +178,27 @@ function renderSidebar() {
     divItem.classList.add('tag-item--divider');
     tagListEl.appendChild(divItem);
   }
+
+  const dupGroups = findDuplicateGroups();
+  const dupCount  = dupGroups.reduce((s, g) => s + g.length, 0);
+  if (dupCount > 0) {
+    const dupItem = document.createElement('li');
+    dupItem.className = 'tag-item tag-item--divider tag-item--danger'
+      + (duplicatesMode ? ' tag-item--active' : '');
+    dupItem.innerHTML = `<span>⚠ Duplikaty</span>
+      <span class="tag-count tag-count--danger">${dupCount}</span>`;
+    dupItem.addEventListener('click', () => {
+      duplicatesMode = !duplicatesMode;
+      if (duplicatesMode) {
+        activeTag = null;
+        activeSimilarTo = null;
+        activeFilterEl.hidden = true;
+      }
+      renderSidebar();
+      renderAll();
+    });
+    tagListEl.appendChild(dupItem);
+  }
 }
 
 function makeTagItem(label, count, value) {
@@ -191,6 +213,7 @@ function makeTagItem(label, count, value) {
 function setTagFilter(tag) {
   activeTag = tag;
   activeSimilarTo = null;
+  duplicatesMode = false;
   if (tag && tag !== '__untagged__') {
     filterPrefixEl.textContent = 'Etykieta:';
     filterLabelEl.textContent = tag;
@@ -209,6 +232,7 @@ function setSimilarFilter(bm) {
   } else {
     activeSimilarTo = bm;
     activeTag = null;
+    duplicatesMode = false;
     filterPrefixEl.textContent = 'Podobne do:';
     filterLabelEl.textContent = bm.title;
     activeFilterEl.hidden = false;
@@ -228,6 +252,16 @@ function renderAll() {
     resultsCountEl.textContent = `${list.length} z ${total} zakładek`;
   } else {
     resultsCountEl.textContent = `${total} zakładek`;
+  }
+
+  if (duplicatesMode) {
+    const groups = findDuplicateGroups();
+    if (groups.length === 0) {
+      containerEl.appendChild(emptyState('Brak duplikatów — wszystko w porządku!'));
+    } else {
+      renderDuplicateGroups(groups);
+    }
+    return;
   }
 
   if (list.length === 0) {
@@ -305,6 +339,30 @@ function createGroup(label, bms) {
   wrap.appendChild(header);
   wrap.appendChild(body);
   return wrap;
+}
+
+function renderDuplicateGroups(groups) {
+  for (const group of groups) {
+    const normalized = normalizeUrl(group[0].url);
+    const header = document.createElement('div');
+    header.className = 'group-header';
+    header.innerHTML =
+      `<span class="group-header-label group-header-label--danger">${escapeHtml(normalized)}</span>
+       <span class="group-header-count group-header-count--danger">${group.length}</span>
+       <span class="group-header-toggle">▾</span>`;
+
+    const body = document.createElement('div');
+    body.className = 'group-body';
+    for (const bm of group) body.appendChild(createRow(bm));
+
+    header.addEventListener('click', () => {
+      const c = body.classList.toggle('collapsed');
+      header.classList.toggle('collapsed', c);
+    });
+
+    containerEl.appendChild(header);
+    containerEl.appendChild(body);
+  }
 }
 
 // --- Bookmark row ---
@@ -634,13 +692,14 @@ async function importBookmarks(file) {
 
 // --- Empty state ---
 
-function emptyState() {
+function emptyState(msg) {
   const div = document.createElement('div');
   div.className = 'empty-state';
+  const text = msg ?? (currentQuery ? `Brak wyników dla „${escapeHtml(currentQuery)}"` : 'Brak zakładek');
   div.innerHTML = `<svg viewBox="0 0 48 48" fill="none">
     <path d="M12 8h24a2 2 0 0 1 2 2v28l-14-7-14 7V10a2 2 0 0 1 2-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
   </svg>
-  <p>${currentQuery ? `Brak wyników dla „${escapeHtml(currentQuery)}"` : 'Brak zakładek'}</p>`;
+  <p>${text}</p>`;
   return div;
 }
 
@@ -723,6 +782,37 @@ function svgCheck() {
 function svgLabel() {
   return `<svg viewBox="0 0 20 20" fill="none"><path d="M3 10L10 3h7v7l-7 7-7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="13.5" cy="6.5" r="1" fill="currentColor"/></svg>`;
 }
+// --- Duplicates ---
+
+const TRACKING = new Set([
+  'utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id',
+  'fbclid','gclid','gclsrc','dclid','msclkid','twclid','mc_cid','mc_eid','mkt_tok',
+]);
+
+function normalizeUrl(url) {
+  try {
+    const u = new URL(url.toLowerCase());
+    u.hostname = u.hostname.replace(/^www\./, '');
+    u.pathname = u.pathname.replace(/\/+$/, '') || '/';
+    u.hash = '';
+    for (const k of [...u.searchParams.keys()]) {
+      if (TRACKING.has(k) || k.startsWith('utm_')) u.searchParams.delete(k);
+    }
+    u.searchParams.sort();
+    return u.toString();
+  } catch { return url.toLowerCase(); }
+}
+
+function findDuplicateGroups() {
+  const groups = new Map();
+  for (const bm of allBookmarks) {
+    const key = normalizeUrl(bm.url);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(bm);
+  }
+  return [...groups.values()].filter((g) => g.length > 1);
+}
+
 // --- Similarity ---
 
 function findSimilar(bm) {
