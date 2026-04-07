@@ -304,7 +304,9 @@ function filterBookmarks(query) {
   if (!query.trim()) return list;
   const q = query.toLowerCase();
   return list.filter(
-    (bm) => bm.title.toLowerCase().includes(q) || bm.url.toLowerCase().includes(q)
+    (bm) => bm.title.toLowerCase().includes(q)
+          || bm.url.toLowerCase().includes(q)
+          || bm.tags.some((t) => t.toLowerCase().includes(q))
   );
 }
 

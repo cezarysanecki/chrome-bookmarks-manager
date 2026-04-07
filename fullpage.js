@@ -473,7 +473,9 @@ function filtered() {
   }
   if (!currentQuery.trim()) return list;
   const q = currentQuery.toLowerCase();
-  return list.filter((b) => b.title.toLowerCase().includes(q) || b.url.toLowerCase().includes(q));
+  return list.filter((b) => b.title.toLowerCase().includes(q)
+    || b.url.toLowerCase().includes(q)
+    || b.tags.some((t) => t.toLowerCase().includes(q)));
 }
 
 // --- Sidebar ---
