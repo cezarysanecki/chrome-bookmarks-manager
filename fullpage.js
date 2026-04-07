@@ -161,12 +161,17 @@ async function initBookmarks() {
 }
 
 if (chrome.storage?.local) {
-  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.INSTALLED_AT, 'bm_view_prefs'], (data) => {
+  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.INSTALLED_AT, STORAGE_KEYS.VIEW_PREFS], (data) => {
     applySettings(data[STORAGE_KEYS.SETTINGS] || {});
     bookmarkStats = data[STORAGE_KEYS.STATS] || {};
-    const prefs = data.bm_view_prefs || {};
+    const prefs = data[STORAGE_KEYS.VIEW_PREFS] || {};
     if (prefs.gridMode)  { gridMode  = true; document.getElementById('btn-grid').classList.add('toggle-btn--active'); }
     if (prefs.groupMode) { groupMode = true; btnGroup.classList.add('toggle-btn--active'); }
+    if (prefs.sort) {
+      currentSort = prefs.sort;
+      const sortEl = document.getElementById('sort-select');
+      if (sortEl) sortEl.value = prefs.sort;
+    }
     if (data[STORAGE_KEYS.INSTALLED_AT]) {
       pluginInstalledAt = data[STORAGE_KEYS.INSTALLED_AT];
     } else {
@@ -220,7 +225,7 @@ filterClearEl.addEventListener('click', () => {
 
 function saveViewPrefs() {
   if (chrome.storage?.local) {
-    chrome.storage.local.set({ bm_view_prefs: { gridMode, groupMode } });
+    chrome.storage.local.set({ [STORAGE_KEYS.VIEW_PREFS]: { gridMode, groupMode, sort: currentSort } });
   }
 }
 
@@ -459,6 +464,7 @@ function updateCheckStatus(msg, autohideMs = null) {
 // --- Sort ---
 document.getElementById('sort-select').addEventListener('change', (e) => {
   currentSort = e.target.value;
+  saveViewPrefs();
   renderAll();
 });
 
@@ -700,7 +706,7 @@ function createCard(bm) {
   if (deadLinks.has(bm.url)) {
     const dead = document.createElement('span');
     dead.className = 'bm-dead-badge bm-dead-badge--card';
-    dead.textContent = 'Niedostępny';
+    dead.textContent = 'Potencjalnie niedostępny';
     cardHeader.appendChild(dead);
   }
   cardHeader.appendChild(copyBtn);
@@ -903,7 +909,7 @@ function createRow(bm) {
   if (deadLinks.has(bm.url)) {
     const dead = document.createElement('span');
     dead.className = 'bm-dead-badge';
-    dead.textContent = 'Niedostępny';
+    dead.textContent = 'Potencjalnie niedostępny';
     link.appendChild(dead);
   }
 
@@ -1145,7 +1151,11 @@ function startEdit(bm, row) {
 let pendingDelete = null;
 modalCancel.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modalOverlay.hidden) closeModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!modalOverlay.hidden) { closeModal(); return; }
+  if (!settingsOverlay.hidden) { settingsOverlay.hidden = true; }
+});
 
 modalConfirm.addEventListener('click', async () => {
   if (!pendingDelete) return;

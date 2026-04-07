@@ -45,6 +45,10 @@ const staleBar          = document.getElementById('stale-bar');
 const staleBarText      = document.getElementById('stale-bar-text');
 const staleBarFilter    = document.getElementById('stale-bar-filter');
 const staleBarClear     = document.getElementById('stale-bar-clear');
+const untaggedBar       = document.getElementById('untagged-bar');
+const untaggedBarText   = document.getElementById('untagged-bar-text');
+const untaggedBarFilter = document.getElementById('untagged-bar-filter');
+const untaggedBarClear  = document.getElementById('untagged-bar-clear');
 const modalOverlay   = document.getElementById('modal-overlay');
 const modalDesc      = document.getElementById('modal-desc');
 const modalCancel    = document.getElementById('modal-cancel');
@@ -101,6 +105,7 @@ async function initBookmarks() {
     renderBookmarks(filterBookmarks(''), '');
     checkDuplicates();
     checkStale();
+    checkUntagged();
   } catch (err) {
     showToast(`Błąd ładowania zakładek: ${err.message}`, 'err');
   }
@@ -144,6 +149,7 @@ addForm.addEventListener('submit', async (e) => {
     allBookmarks = flattenBookmarks(tree);
     renderBookmarks(filterBookmarks(currentQuery), currentQuery);
     checkDuplicates();
+    checkUntagged();
     showToast(`Dodano „${title}"`, 'ok');
   } catch (err) {
     showToast(`Błąd dodawania: ${err.message}`, 'err');
@@ -151,9 +157,11 @@ addForm.addEventListener('submit', async (e) => {
 });
 
 if (chrome.storage?.local) {
-  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.PENDING_ADD, STORAGE_KEYS.INSTALLED_AT], (data) => {
+  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.PENDING_ADD, STORAGE_KEYS.INSTALLED_AT, STORAGE_KEYS.VIEW_PREFS], (data) => {
     settings = { favicons: false, aiEnabled: false, openaiKey: '', ...(data[STORAGE_KEYS.SETTINGS] || {}) };
     bookmarkStats = data[STORAGE_KEYS.STATS] || {};
+    const prefs = data[STORAGE_KEYS.VIEW_PREFS] || {};
+    if (prefs.sort) { currentSort = prefs.sort; sortSelect.value = prefs.sort; }
     if (data[STORAGE_KEYS.INSTALLED_AT]) {
       pluginInstalledAt = data[STORAGE_KEYS.INSTALLED_AT];
     } else {
@@ -255,10 +263,38 @@ staleBarClear.addEventListener('click', () => {
   staleBar.hidden = true;
 });
 
+// --- Untagged ---
+function checkUntagged() {
+  const count = allBookmarks.filter((bm) => bm.tags.length === 0).length;
+  if (count > 0) {
+    untaggedBarText.textContent = `${count} zakładek bez etykiet`;
+    untaggedBar.hidden = false;
+  } else {
+    untaggedBar.hidden = true;
+  }
+}
+
+untaggedBarFilter.addEventListener('click', () => {
+  showOnlyStale = false; showOnlyDuplicates = false;
+  activeTagFilter = '__untagged__'; activeSimilarTo = null;
+  tagFilterBar.hidden = true; similarFilterBar.hidden = true;
+  untaggedBar.hidden = true;
+  renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+});
+
+untaggedBarClear.addEventListener('click', () => {
+  untaggedBar.hidden = true;
+});
 
 // --- Sort ---
 sortSelect.addEventListener('change', () => {
   currentSort = sortSelect.value;
+  if (chrome.storage?.local) {
+    chrome.storage.local.get(STORAGE_KEYS.VIEW_PREFS, (data) => {
+      const prefs = data[STORAGE_KEYS.VIEW_PREFS] || {};
+      chrome.storage.local.set({ [STORAGE_KEYS.VIEW_PREFS]: { ...prefs, sort: currentSort } });
+    });
+  }
   renderBookmarks(filterBookmarks(currentQuery), currentQuery);
 });
 
@@ -298,6 +334,8 @@ function filterBookmarks(query) {
   } else if (activeSimilarTo) {
     const ids = new Set(findSimilar(activeSimilarTo, allBookmarks).map((b) => b.id));
     list = list.filter((bm) => ids.has(bm.id));
+  } else if (activeTagFilter === '__untagged__') {
+    list = list.filter((bm) => bm.tags.length === 0);
   } else if (activeTagFilter) {
     list = list.filter((bm) => bm.tags.includes(activeTagFilter));
   }

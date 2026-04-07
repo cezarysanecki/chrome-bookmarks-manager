@@ -7,6 +7,7 @@ export const STORAGE_KEYS = {
   PENDING_ADD:  'bm_pending_add',
   HISTORY:      'bm_history',
   SETTINGS:     'bm_settings',
+  VIEW_PREFS:   'bm_view_prefs',
 };
 
 export const HISTORY_MAX = 30;

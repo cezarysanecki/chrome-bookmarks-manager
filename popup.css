@@ -342,6 +342,15 @@ main::-webkit-scrollbar-thumb {
   background: rgba(99, 179, 237, .15);
   color: #63b3ed;
 }
+.untagged-bar {
+  background: rgba(160, 174, 192, .08);
+  border-color: rgba(160, 174, 192, .25);
+  color: #a0aec0;
+}
+.untagged-bar .dup-bar-btn {
+  background: rgba(160, 174, 192, .15);
+  color: #a0aec0;
+}
 
 .dup-bar {
   display: flex;
