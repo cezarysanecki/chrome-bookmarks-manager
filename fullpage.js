@@ -1,4 +1,12 @@
-'use strict';
+import { STORAGE_KEYS, HISTORY_MAX, DEBOUNCE_MS } from './src/config.js';
+import { normalizeUrl, urlHostname, isAllowedProtocol } from './src/lib/url.js';
+import { escapeHtml, escapeRegex, highlight } from './src/lib/dom.js';
+import { csvRow, parseCsv, dateStamp } from './src/lib/csv.js';
+import { BookmarkStats } from './src/bookmarks/stats.js';
+import { parseTitle, buildRawTitle, flattenBookmarks, isStale } from './src/bookmarks/parse.js';
+import { findDuplicateGroups, findSimilar, sigWords } from './src/bookmarks/duplicates.js';
+import { svgEdit, svgTrash, svgCopy, svgCheck, svgWarn, svgLabel, svgSimilar, svgAI } from './src/ui/icons.js';
+import { bookmarksApi } from './src/bookmarks/api.js';
 
 let allBookmarks = [];   // [{ id, rawTitle, title, url, tags[], parseError }]
 let currentQuery    = '';
@@ -8,9 +16,7 @@ let gridMode        = false;
 let activeSimilarTo = null;
 let currentSort     = 'popular';
 let bookmarkStats   = {};  // { [id]: { count, lastOpened } }
-const STALE_MS        = 30 * 24 * 60 * 60 * 1000;
-const INSTALLED_AT_KEY = 'bm_installed_at';
-let   pluginInstalledAt = Date.now();
+let pluginInstalledAt = Date.now();
 let staleMode       = false;
 let duplicatesMode  = false;
 let settings        = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '' };
@@ -37,38 +43,35 @@ const importFileEl   = document.getElementById('import-file');
 
 // --- History (chrome.storage.local) ---
 
-const HISTORY_KEY = 'bm_history';
-const HISTORY_MAX = 30;
-
 function historyPush(entry) {
   if (!chrome.storage?.local) return;
-  chrome.storage.local.get(HISTORY_KEY, (data) => {
-    const list = data[HISTORY_KEY] || [];
+  chrome.storage.local.get(STORAGE_KEYS.HISTORY, (data) => {
+    const list = data[STORAGE_KEYS.HISTORY] || [];
     list.unshift({ ...entry, ts: Date.now() });
     if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
-    chrome.storage.local.set({ [HISTORY_KEY]: list }, renderHistory);
+    chrome.storage.local.set({ [STORAGE_KEYS.HISTORY]: list }, renderHistory);
   });
 }
 
 function historyRemoveByTs(ts) {
   if (!chrome.storage?.local) return;
-  chrome.storage.local.get(HISTORY_KEY, (data) => {
-    const list = (data[HISTORY_KEY] || []).filter((e) => e.ts !== ts);
-    chrome.storage.local.set({ [HISTORY_KEY]: list }, renderHistory);
+  chrome.storage.local.get(STORAGE_KEYS.HISTORY, (data) => {
+    const list = (data[STORAGE_KEYS.HISTORY] || []).filter((e) => e.ts !== ts);
+    chrome.storage.local.set({ [STORAGE_KEYS.HISTORY]: list }, renderHistory);
   });
 }
 
-function undoHistoryEntry(entry, onDone) {
-  if (entry.type === 'delete') {
-    chrome.bookmarks.create({ title: entry.rawTitle, url: entry.url }, () => {
-      historyRemoveByTs(entry.ts);
-      onDone?.();
-    });
-  } else if (entry.type === 'edit' || entry.type === 'tag_add' || entry.type === 'tag_remove') {
-    chrome.bookmarks.update(entry.id, { title: entry.rawTitleBefore, url: entry.urlBefore ?? entry.url }, () => {
-      historyRemoveByTs(entry.ts);
-      onDone?.();
-    });
+async function undoHistoryEntry(entry, onDone) {
+  try {
+    if (entry.type === 'delete') {
+      await bookmarksApi.create({ title: entry.rawTitle, url: entry.url });
+    } else if (entry.type === 'edit' || entry.type === 'tag_add' || entry.type === 'tag_remove') {
+      await bookmarksApi.update(entry.id, { title: entry.rawTitleBefore, url: entry.urlBefore ?? entry.url });
+    }
+    historyRemoveByTs(entry.ts);
+    onDone?.();
+  } catch (err) {
+    showToast(`Błąd cofania: ${err.message}`, 'err');
   }
 }
 
@@ -87,8 +90,8 @@ function renderHistory() {
   const historyListEl = document.getElementById('history-list');
   if (!historyListEl) return;
   if (!chrome.storage?.local) return;
-  chrome.storage.local.get(HISTORY_KEY, (data) => {
-    const entries = data[HISTORY_KEY] || [];
+  chrome.storage.local.get(STORAGE_KEYS.HISTORY, (data) => {
+    const entries = data[STORAGE_KEYS.HISTORY] || [];
     historyListEl.innerHTML = '';
     if (entries.length === 0) {
       const li = document.createElement('li');
@@ -110,14 +113,17 @@ function renderHistory() {
       undoBtn.className = 'history-undo-btn';
       undoBtn.title = 'Cofnij';
       undoBtn.textContent = '↩';
-      undoBtn.addEventListener('click', () => {
-        undoHistoryEntry(entry, () => {
-          chrome.bookmarks.getTree((tree) => {
+      undoBtn.addEventListener('click', async () => {
+        await undoHistoryEntry(entry, async () => {
+          try {
+            const tree = await bookmarksApi.getTree();
             allBookmarks = flattenBookmarks(tree);
             renderSidebar();
             renderAll();
             showToast('Cofnięto', 'ok');
-          });
+          } catch (err) {
+            showToast(`Błąd odświeżania: ${err.message}`, 'err');
+          }
         });
       });
 
@@ -129,7 +135,7 @@ function renderHistory() {
 }
 
 function saveSettings() {
-  if (chrome.storage?.local) chrome.storage.local.set({ bm_settings: settings });
+  if (chrome.storage?.local) chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings });
 }
 
 // --- Init ---
@@ -141,25 +147,28 @@ function applySettings(s) {
   document.getElementById('setting-openai-key').value    = settings.openaiKey;
 }
 
-function initBookmarks() {
-  chrome.bookmarks.getTree((tree) => {
+async function initBookmarks() {
+  try {
+    const tree = await bookmarksApi.getTree();
     allBookmarks = flattenBookmarks(tree);
     renderSidebar();
     renderAll();
     renderHistory();
     if (settings.deadLinkCheck) checkDeadLinks();
-  });
+  } catch (err) {
+    showToast(`Błąd ładowania zakładek: ${err.message}`, 'err');
+  }
 }
 
 if (chrome.storage?.local) {
-  chrome.storage.local.get(['bm_settings', BookmarkStats.KEY, INSTALLED_AT_KEY], (data) => {
-    applySettings(data.bm_settings || {});
-    bookmarkStats = data[BookmarkStats.KEY] || {};
-    if (data[INSTALLED_AT_KEY]) {
-      pluginInstalledAt = data[INSTALLED_AT_KEY];
+  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.INSTALLED_AT], (data) => {
+    applySettings(data[STORAGE_KEYS.SETTINGS] || {});
+    bookmarkStats = data[STORAGE_KEYS.STATS] || {};
+    if (data[STORAGE_KEYS.INSTALLED_AT]) {
+      pluginInstalledAt = data[STORAGE_KEYS.INSTALLED_AT];
     } else {
       pluginInstalledAt = Date.now();
-      chrome.storage.local.set({ [INSTALLED_AT_KEY]: pluginInstalledAt });
+      chrome.storage.local.set({ [STORAGE_KEYS.INSTALLED_AT]: pluginInstalledAt });
     }
     initBookmarks();
   });
@@ -190,7 +199,7 @@ searchEl.addEventListener('input', () => {
   debounce = setTimeout(() => {
     currentQuery = searchEl.value;
     renderAll();
-  }, 250);
+  }, DEBOUNCE_MS);
 });
 
 clearSearchEl.addEventListener('click', () => {
@@ -330,7 +339,7 @@ function showAISuggestPanel(bm, container, onTagAdded) {
       const rawTitleBefore = bm.rawTitle;
       bm.tags = [...bm.tags, tag];
       bm.rawTitle = buildRawTitle(bm.title, bm.tags);
-      chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+      bookmarksApi.update(bm.id, { title: bm.rawTitle }).catch((err) => showToast(`Błąd: ${err.message}`, 'err'));
       historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
       chip.remove();
       onTagAdded(bm);
@@ -450,56 +459,12 @@ importFileEl.addEventListener('change', () => {
   importFileEl.value = '';
 });
 
-// --- Title parsing (same contract as popup.js) ---
-
-function parseTitle(raw) {
-  const sep = raw.indexOf(' | ');
-  if (sep === -1) return { title: raw, tags: [], parseError: null };
-
-  const title       = raw.slice(0, sep).trim();
-  const rawTagSection = raw.slice(sep + 3);
-
-  if (!rawTagSection.trim())
-    return { title, tags: [], parseError: `Sekcja etykiet jest pusta — usuń " | " lub dodaj etykietę` };
-
-  const parts     = rawTagSection.split(',');
-  const emptyPart = parts.some((t) => !t.trim());
-  if (emptyPart)
-    return { title, tags: parts.map((t) => t.trim()).filter(Boolean),
-      parseError: `Pusta etykieta w "${rawTagSection.trim()}" — usuń nadmiarowe przecinki` };
-
-  const tags      = parts.map((t) => t.trim());
-  const withPipe  = tags.filter((t) => t.includes('|'));
-  if (withPipe.length)
-    return { title, tags,
-      parseError: `Etykieta nie może zawierać "|": ${withPipe.map((t) => `"${t}"`).join(', ')}` };
-
-  return { title, tags, parseError: null };
-}
-
-function buildRawTitle(title, tags) {
-  return tags.length ? `${title} | ${tags.join(', ')}` : title;
-}
-
-function flattenBookmarks(nodes) {
-  const out = [];
-  for (const node of nodes) {
-    if (node.url) {
-      const raw = node.title || node.url;
-      const { title, tags, parseError } = parseTitle(raw);
-      out.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError, dateAdded: node.dateAdded || 0 });
-    }
-    if (node.children) out.push(...flattenBookmarks(node.children));
-  }
-  return out;
-}
-
 // --- Filtering ---
 
 function filtered() {
-  let list = staleMode ? allBookmarks.filter(isStale) : allBookmarks;
+  let list = staleMode ? allBookmarks.filter((bm) => isStale(bm, bookmarkStats, pluginInstalledAt)) : allBookmarks;
   if (activeSimilarTo) {
-    const ids = new Set(findSimilar(activeSimilarTo).map((b) => b.id));
+    const ids = new Set(findSimilar(activeSimilarTo, allBookmarks).map((b) => b.id));
     list = list.filter((b) => ids.has(b.id));
   } else if (activeTag === '__untagged__') {
     list = list.filter((b) => b.tags.length === 0);
@@ -537,7 +502,7 @@ function renderSidebar() {
     tagListEl.appendChild(divItem);
   }
 
-  const dupGroups = findDuplicateGroups();
+  const dupGroups = findDuplicateGroups(allBookmarks);
   const dupCount  = dupGroups.reduce((s, g) => s + g.length, 0);
   if (dupCount > 0) {
     const dupItem = document.createElement('li');
@@ -553,7 +518,7 @@ function renderSidebar() {
     tagListEl.appendChild(dupItem);
   }
 
-  const staleCount = allBookmarks.filter(isStale).length;
+  const staleCount = allBookmarks.filter((bm) => isStale(bm, bookmarkStats, pluginInstalledAt)).length;
   if (staleCount > 0) {
     const staleItem = document.createElement('li');
     staleItem.className = 'tag-item tag-item--divider tag-item--stale'
@@ -567,13 +532,6 @@ function renderSidebar() {
     });
     tagListEl.appendChild(staleItem);
   }
-}
-
-function isStale(bm) {
-  const stat = bookmarkStats[bm.id];
-  const refDate = stat?.lastOpened
-    ?? Math.max(bm.dateAdded || 0, pluginInstalledAt);
-  return Date.now() - refDate > STALE_MS;
 }
 
 function makeTagItem(label, count, value) {
@@ -630,7 +588,7 @@ function renderAll() {
   }
 
   if (duplicatesMode) {
-    const groups = findDuplicateGroups();
+    const groups = findDuplicateGroups(allBookmarks);
     if (groups.length === 0) {
       containerEl.appendChild(emptyState('Brak duplikatów — wszystko w porządku!'));
     } else {
@@ -1044,7 +1002,7 @@ function toggleTagEditor(bm, row, btn) {
         const rawTitleBefore = bm.rawTitle;
         bm.tags = bm.tags.filter((t) => t !== tag);
         bm.rawTitle = buildRawTitle(bm.title, bm.tags);
-        chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+        bookmarksApi.update(bm.id, { title: bm.rawTitle }).catch((err) => showToast(`Błąd: ${err.message}`, 'err'));
         historyPush({ type: 'tag_remove', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
         rerender();
         refreshRowTags(bm, row);
@@ -1069,7 +1027,7 @@ function toggleTagEditor(bm, row, btn) {
     const rawTitleBefore = bm.rawTitle;
     bm.tags = [...bm.tags, tag];
     bm.rawTitle = buildRawTitle(bm.title, bm.tags);
-    chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+    bookmarksApi.update(bm.id, { title: bm.rawTitle }).catch((err) => showToast(`Błąd: ${err.message}`, 'err'));
     historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
     rerender(); refreshRowTags(bm, row); renderSidebar();
     input.value = ''; input.focus();
@@ -1125,29 +1083,35 @@ function startEdit(bm, row) {
     row.replaceWith(isCard ? createCard(bm) : createRow(bm));
   });
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const newTitle = titleIn.value.trim(), newUrl = urlIn.value.trim();
     if (!newTitle || !newUrl) return;
     const newTags = tagsIn.value.split(',').map((t) => t.trim()).filter(Boolean);
     const snapshot = { type: 'edit', id: bm.id, title: bm.title, rawTitleBefore: bm.rawTitle, urlBefore: bm.url, ts: Date.now() };
     const newRaw = buildRawTitle(newTitle, newTags);
-    chrome.bookmarks.update(bm.id, { title: newRaw, url: newUrl }, () => {
+    try {
+      await bookmarksApi.update(bm.id, { title: newRaw, url: newUrl });
       historyPush(snapshot);
       bm.title = newTitle; bm.url = newUrl; bm.tags = newTags; bm.rawTitle = newRaw;
       row.classList.remove('bm-row--editing');
       row.replaceWith(isCard ? createCard(bm) : createRow(bm));
-      showToast(`Zapisano „${newTitle}"`, 'ok', () => {
-        undoHistoryEntry(snapshot, () => {
-          chrome.bookmarks.getTree((tree) => {
+      showToast(`Zapisano „${newTitle}"`, 'ok', async () => {
+        await undoHistoryEntry(snapshot, async () => {
+          try {
+            const tree = await bookmarksApi.getTree();
             allBookmarks = flattenBookmarks(tree);
             renderSidebar();
             renderAll();
             showToast('Cofnięto edycję', 'ok');
-          });
+          } catch (err2) {
+            showToast(`Błąd odświeżania: ${err2.message}`, 'err');
+          }
         });
       });
-    });
+    } catch (err) {
+      showToast(`Błąd zapisu: ${err.message}`, 'err');
+    }
   });
 
   btnRow.appendChild(save); btnRow.appendChild(cancel);
@@ -1163,33 +1127,39 @@ modalCancel.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modalOverlay.hidden) closeModal(); });
 
-modalConfirm.addEventListener('click', () => {
+modalConfirm.addEventListener('click', async () => {
   if (!pendingDelete) return;
   const { id, row } = pendingDelete;
   const bm = allBookmarks.find((b) => b.id === id);
   const snapshot = bm
     ? { type: 'delete', title: bm.title, rawTitle: bm.rawTitle, url: bm.url, ts: Date.now() }
     : null;
-  chrome.bookmarks.remove(id, () => {
+  closeModal();
+  try {
+    await bookmarksApi.remove(id);
     if (snapshot) historyPush(snapshot);
     allBookmarks = allBookmarks.filter((b) => b.id !== id);
     row.remove();
     renderSidebar();
     resultsCountEl.textContent = `${allBookmarks.length} zakładek`;
     if (snapshot) {
-      showToast(`Usunięto „${snapshot.title}"`, 'ok', () => {
-        undoHistoryEntry(snapshot, () => {
-          chrome.bookmarks.getTree((tree) => {
+      showToast(`Usunięto „${snapshot.title}"`, 'ok', async () => {
+        await undoHistoryEntry(snapshot, async () => {
+          try {
+            const tree = await bookmarksApi.getTree();
             allBookmarks = flattenBookmarks(tree);
             renderSidebar();
             renderAll();
             showToast('Cofnięto usunięcie', 'ok');
-          });
+          } catch (err2) {
+            showToast(`Błąd odświeżania: ${err2.message}`, 'err');
+          }
         });
       });
     }
-  });
-  closeModal();
+  } catch (err) {
+    showToast(`Błąd usuwania: ${err.message}`, 'err');
+  }
 });
 
 function confirmDelete(id, row) {
@@ -1204,13 +1174,9 @@ function closeModal() { modalOverlay.hidden = true; pendingDelete = null; }
 
 // --- Open ---
 
-const ALLOWED = ['http:', 'https:', 'ftp:', 'file:'];
-
 function openBookmark(bm) {
   const url = bm.url;
-  let p;
-  try { p = new URL(url); } catch { openErrorPage(url); return; }
-  if (!ALLOWED.includes(p.protocol)) { openErrorPage(url); return; }
+  if (!isAllowedProtocol(url)) { openErrorPage(url); return; }
   BookmarkStats.increment(bm.id);
   const prevStat = bookmarkStats[bm.id];
   bookmarkStats[bm.id] = { count: (prevStat?.count || 0) + 1, lastOpened: Date.now() };
@@ -1269,17 +1235,18 @@ async function importBookmarks(file) {
     const tags = gi !== -1 ? (row[gi] || '').split(';').map((t) => t.trim()).filter(Boolean) : [];
     if (allBookmarks.some((b) => b.url === url)) { skipped++; continue; }
     try {
-      await new Promise((res, rej) =>
-        chrome.bookmarks.create({ title: buildRawTitle(title, tags), url },
-          (bm) => chrome.runtime.lastError ? rej() : res(bm)));
+      await bookmarksApi.create({ title: buildRawTitle(title, tags), url });
       added++;
     } catch { skipped++; }
   }
 
-  chrome.bookmarks.getTree((tree) => {
+  try {
+    const tree = await bookmarksApi.getTree();
     allBookmarks = flattenBookmarks(tree);
     renderSidebar(); renderAll();
-  });
+  } catch (err) {
+    showToast(`Błąd odświeżania: ${err.message}`, 'err');
+  }
 
   showToast(added === 0
     ? `Nic nie dodano — ${skipped} pominiętych`
@@ -1298,54 +1265,6 @@ function emptyState(msg) {
   </svg>
   <p>${text}</p>`;
   return div;
-}
-
-// --- Helpers ---
-
-function highlight(text, query) {
-  const e = escapeHtml(text);
-  if (!query.trim()) return e;
-  const eq = escapeHtml(query);
-  return e.replace(new RegExp(escapeRegex(eq), 'gi'), '<mark>$&</mark>');
-}
-
-function escapeHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
-
-function csvRow(fields) {
-  return fields.map((f) => {
-    const s = String(f ?? '');
-    return (s.includes(',') || s.includes('"') || s.includes('\n'))
-      ? `"${s.replace(/"/g,'""')}"` : s;
-  }).join(',');
-}
-
-function parseCsv(text) {
-  const src = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
-  const rows = []; let row = [], field = '', inQ = false, i = 0;
-  while (i < src.length) {
-    const ch = src[i];
-    if (inQ) {
-      if (ch === '"') { if (src[i+1] === '"') { field += '"'; i += 2; continue; } inQ = false; }
-      else field += ch;
-    } else {
-      if (ch === '"') inQ = true;
-      else if (ch === ',') { row.push(field); field = ''; }
-      else if (ch === '\r' || ch === '\n') {
-        if (ch === '\r' && src[i+1] === '\n') i++;
-        row.push(field); field = '';
-        if (row.some((f) => f !== '')) rows.push(row);
-        row = [];
-      } else field += ch;
-    }
-    i++;
-  }
-  row.push(field);
-  if (row.some((f) => f !== '')) rows.push(row);
-  return rows;
 }
 
 let toastTimer;
@@ -1371,93 +1290,3 @@ function showToast(msg, type = 'ok', undoFn = null) {
   toastTimer = setTimeout(() => { toastEl.hidden = true; }, undoFn ? 6000 : 3500);
 }
 
-function dateStamp() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-
-// --- SVG icons ---
-
-function svgEdit() {
-  return `<svg viewBox="0 0 20 20" fill="none"><path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
-}
-function svgTrash() {
-  return `<svg viewBox="0 0 20 20" fill="none"><path d="M4 6h12M8 6V4h4v2M7 6v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-function svgCopy() {
-  return `<svg viewBox="0 0 20 20" fill="none"><rect x="7" y="7" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M13 7V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>`;
-}
-function svgCheck() {
-  return `<svg viewBox="0 0 20 20" fill="none"><path d="M4 10l5 5 7-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-function svgLabel() {
-  return `<svg viewBox="0 0 20 20" fill="none"><path d="M3 10L10 3h7v7l-7 7-7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="13.5" cy="6.5" r="1" fill="currentColor"/></svg>`;
-}
-// --- Duplicates ---
-
-const TRACKING = new Set([
-  'utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id',
-  'fbclid','gclid','gclsrc','dclid','msclkid','twclid','mc_cid','mc_eid','mkt_tok',
-]);
-
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url.toLowerCase());
-    u.hostname = u.hostname.replace(/^www\./, '');
-    u.pathname = u.pathname.replace(/\/+$/, '') || '/';
-    u.hash = '';
-    for (const k of [...u.searchParams.keys()]) {
-      if (TRACKING.has(k) || k.startsWith('utm_')) u.searchParams.delete(k);
-    }
-    u.searchParams.sort();
-    return u.toString();
-  } catch { return url.toLowerCase(); }
-}
-
-function findDuplicateGroups() {
-  const groups = new Map();
-  for (const bm of allBookmarks) {
-    const key = normalizeUrl(bm.url);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(bm);
-  }
-  return [...groups.values()].filter((g) => g.length > 1);
-}
-
-// --- Similarity ---
-
-function findSimilar(bm) {
-  const host  = urlHostname(bm.url);
-  const words = sigWords(bm.title);
-  return allBookmarks.filter((other) => {
-    if (other.id === bm.id) return false;
-    if (host && urlHostname(other.url) === host) return true;
-    return sigWords(other.title).filter((w) => words.includes(w)).length >= 2;
-  });
-}
-
-function urlHostname(url) {
-  try { return new URL(url).hostname.replace(/^www\./, ''); }
-  catch { return null; }
-}
-
-function sigWords(title) {
-  return [...new Set(title.toLowerCase().split(/[\s\-_/.,]+/).filter((w) => w.length >= 4))];
-}
-
-function svgSimilar() {
-  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="5" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <circle cx="15" cy="5" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <circle cx="15" cy="15" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <path d="M7.5 10h2M9.5 10l3-4M9.5 10l3 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-  </svg>`;
-}
-
-function svgWarn() {
-  return `<svg viewBox="0 0 20 20" fill="none"><path d="M10 7v4M10 13h.01M8.57 2.9L1.52 15a1.67 1.67 0 0 0 1.43 2.5h14.1A1.67 1.67 0 0 0 18.48 15L11.43 2.9a1.67 1.67 0 0 0-2.86 0z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-
-function svgAI() {
-  return `<svg viewBox="0 0 20 20" fill="none"><path d="M10 2l1.5 4.5L16 8l-4.5 1.5L10 15l-1.5-4.5L4 8l4.5-1.5L10 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M16 2l.8 2L19 5l-2.2.8L16 8l-.8-2.2L13 5l2.2-.8L16 2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>`;
-}

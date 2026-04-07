@@ -1,12 +1,16 @@
-// TODO (future iterations):
-//   - Find similar bookmarks (by domain, keywords)
-//   - AI-powered automatic categorization
-
 // Tags are stored directly in the bookmark title using the format:
 //   "Display Title | tag1, tag2, tag3"
 // No external storage needed — tags travel with the bookmark.
 
-'use strict';
+import { STORAGE_KEYS, HISTORY_MAX, DEBOUNCE_MS } from './src/config.js';
+import { normalizeUrl, urlHostname, isAllowedProtocol } from './src/lib/url.js';
+import { escapeHtml, escapeRegex, highlight } from './src/lib/dom.js';
+import { csvRow, parseCsv, dateStamp } from './src/lib/csv.js';
+import { BookmarkStats } from './src/bookmarks/stats.js';
+import { parseTitle, buildRawTitle, flattenBookmarks, isStale } from './src/bookmarks/parse.js';
+import { findDuplicateGroups, findSimilar, sigWords } from './src/bookmarks/duplicates.js';
+import { svgEdit, svgTrash, svgCopy, svgCheck, svgWarn, svgLabel, svgSimilar, svgAI } from './src/ui/icons.js';
+import { bookmarksApi } from './src/bookmarks/api.js';
 
 let allBookmarks = [];   // [{ id, rawTitle, title, url, tags[] }]
 let currentQuery = '';
@@ -15,9 +19,7 @@ let activeSimilarTo = null;  // bm object | null
 let currentSort = 'popular';
 let bookmarkStats = {};  // { [id]: { count, lastOpened } }
 let showOnlyStale = false;
-const STALE_MS        = 30 * 24 * 60 * 60 * 1000;
-const INSTALLED_AT_KEY = 'bm_installed_at';
-let   pluginInstalledAt = Date.now();
+let pluginInstalledAt = Date.now();
 
 // --- DOM refs ---
 const searchInput    = document.getElementById('search');
@@ -59,49 +61,49 @@ let settings = { favicons: false, aiEnabled: false, openaiKey: '' };
 
 // --- History (chrome.storage.local) ---
 
-const HISTORY_KEY = 'bm_history';
-const HISTORY_MAX = 30;
-
 function historyPush(entry) {
   if (!chrome.storage?.local) return;
-  chrome.storage.local.get(HISTORY_KEY, (data) => {
-    const list = data[HISTORY_KEY] || [];
+  chrome.storage.local.get(STORAGE_KEYS.HISTORY, (data) => {
+    const list = data[STORAGE_KEYS.HISTORY] || [];
     list.unshift({ ...entry, ts: Date.now() });
     if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
-    chrome.storage.local.set({ [HISTORY_KEY]: list });
+    chrome.storage.local.set({ [STORAGE_KEYS.HISTORY]: list });
   });
 }
 
 function historyRemoveByTs(ts) {
   if (!chrome.storage?.local) return;
-  chrome.storage.local.get(HISTORY_KEY, (data) => {
-    const list = (data[HISTORY_KEY] || []).filter((e) => e.ts !== ts);
-    chrome.storage.local.set({ [HISTORY_KEY]: list });
+  chrome.storage.local.get(STORAGE_KEYS.HISTORY, (data) => {
+    const list = (data[STORAGE_KEYS.HISTORY] || []).filter((e) => e.ts !== ts);
+    chrome.storage.local.set({ [STORAGE_KEYS.HISTORY]: list });
   });
 }
 
-function undoHistoryEntry(entry, onDone) {
-  if (entry.type === 'delete') {
-    chrome.bookmarks.create({ title: entry.rawTitle, url: entry.url }, () => {
-      historyRemoveByTs(entry.ts);
-      onDone?.();
-    });
-  } else if (entry.type === 'edit' || entry.type === 'tag_add' || entry.type === 'tag_remove') {
-    chrome.bookmarks.update(entry.id, { title: entry.rawTitleBefore, url: entry.urlBefore ?? entry.url }, () => {
-      historyRemoveByTs(entry.ts);
-      onDone?.();
-    });
+async function undoHistoryEntry(entry, onDone) {
+  try {
+    if (entry.type === 'delete') {
+      await bookmarksApi.create({ title: entry.rawTitle, url: entry.url });
+    } else if (entry.type === 'edit' || entry.type === 'tag_add' || entry.type === 'tag_remove') {
+      await bookmarksApi.update(entry.id, { title: entry.rawTitleBefore, url: entry.urlBefore ?? entry.url });
+    }
+    historyRemoveByTs(entry.ts);
+    onDone?.();
+  } catch (err) {
+    showToast(`Błąd cofania: ${err.message}`, 'err');
   }
 }
 
 // --- Bootstrap ---
-function initBookmarks() {
-  chrome.bookmarks.getTree((tree) => {
+async function initBookmarks() {
+  try {
+    const tree = await bookmarksApi.getTree();
     allBookmarks = flattenBookmarks(tree);
     renderBookmarks(filterBookmarks(''), '');
     checkDuplicates();
     checkStale();
-  });
+  } catch (err) {
+    showToast(`Błąd ładowania zakładek: ${err.message}`, 'err');
+  }
 }
 
 // --- Add bookmark panel ---
@@ -128,39 +130,40 @@ document.getElementById('btn-add').addEventListener('click', () => {
 
 addCancelBtn.addEventListener('click', closeAddPanel);
 
-addForm.addEventListener('submit', (e) => {
+addForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const title = addTitleInput.value.trim();
   const url   = addUrlInput.value.trim();
   const tags  = addTagsInput.value.split(',').map((t) => t.trim()).filter(Boolean);
   if (!title || !url) return;
 
-  const rawTitle = buildRawTitle(title, tags);
-  chrome.bookmarks.create({ title: rawTitle, url }, () => {
+  try {
+    await bookmarksApi.create({ title: buildRawTitle(title, tags), url });
     closeAddPanel();
-    chrome.bookmarks.getTree((tree) => {
-      allBookmarks = flattenBookmarks(tree);
-      renderBookmarks(filterBookmarks(currentQuery), currentQuery);
-      checkDuplicates();
-    });
+    const tree = await bookmarksApi.getTree();
+    allBookmarks = flattenBookmarks(tree);
+    renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+    checkDuplicates();
     showToast(`Dodano „${title}"`, 'ok');
-  });
+  } catch (err) {
+    showToast(`Błąd dodawania: ${err.message}`, 'err');
+  }
 });
 
 if (chrome.storage?.local) {
-  chrome.storage.local.get(['bm_settings', BookmarkStats.KEY, 'bm_pending_add', INSTALLED_AT_KEY], (data) => {
-    settings = { favicons: false, aiEnabled: false, openaiKey: '', ...(data.bm_settings || {}) };
-    bookmarkStats = data[BookmarkStats.KEY] || {};
-    if (data[INSTALLED_AT_KEY]) {
-      pluginInstalledAt = data[INSTALLED_AT_KEY];
+  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.PENDING_ADD, STORAGE_KEYS.INSTALLED_AT], (data) => {
+    settings = { favicons: false, aiEnabled: false, openaiKey: '', ...(data[STORAGE_KEYS.SETTINGS] || {}) };
+    bookmarkStats = data[STORAGE_KEYS.STATS] || {};
+    if (data[STORAGE_KEYS.INSTALLED_AT]) {
+      pluginInstalledAt = data[STORAGE_KEYS.INSTALLED_AT];
     } else {
       pluginInstalledAt = Date.now();
-      chrome.storage.local.set({ [INSTALLED_AT_KEY]: pluginInstalledAt });
+      chrome.storage.local.set({ [STORAGE_KEYS.INSTALLED_AT]: pluginInstalledAt });
     }
     initBookmarks();
-    if (data.bm_pending_add) {
-      const { title, url } = data.bm_pending_add;
-      chrome.storage.local.remove('bm_pending_add');
+    if (data[STORAGE_KEYS.PENDING_ADD]) {
+      const { title, url } = data[STORAGE_KEYS.PENDING_ADD];
+      chrome.storage.local.remove(STORAGE_KEYS.PENDING_ADD);
       openAddPanel(title, url);
     }
   });
@@ -189,7 +192,7 @@ searchInput.addEventListener('input', () => {
   debounceTimer = setTimeout(() => {
     currentQuery = query;
     renderBookmarks(filterBookmarks(query), query);
-  }, 300);
+  }, DEBOUNCE_MS);
 });
 
 clearBtn.addEventListener('click', () => {
@@ -222,7 +225,7 @@ dupBarClear.addEventListener('click', () => {
 });
 
 function checkDuplicates() {
-  const groups = findDuplicateGroups();
+  const groups = findDuplicateGroups(allBookmarks);
   const count  = groups.reduce((s, g) => s + g.length, 0);
   if (count > 0) {
     dupBarText.textContent = `${count} zakładek to duplikaty`;
@@ -230,15 +233,8 @@ function checkDuplicates() {
   }
 }
 
-function isStale(bm) {
-  const stat = bookmarkStats[bm.id];
-  const refDate = stat?.lastOpened
-    ?? Math.max(bm.dateAdded || 0, pluginInstalledAt);
-  return Date.now() - refDate > STALE_MS;
-}
-
 function checkStale() {
-  const count = allBookmarks.filter(isStale).length;
+  const count = allBookmarks.filter((bm) => isStale(bm, bookmarkStats, pluginInstalledAt)).length;
   if (count > 0) {
     staleBarText.textContent = `${count} zakładek nieużywanych przez 30+ dni`;
     staleBar.hidden = false;
@@ -259,34 +255,6 @@ staleBarClear.addEventListener('click', () => {
   staleBar.hidden = true;
 });
 
-const TRACKING_P = new Set([
-  'utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id',
-  'fbclid','gclid','gclsrc','dclid','msclkid','twclid','mc_cid','mc_eid','mkt_tok',
-]);
-
-function normalizeUrl(url) {
-  try {
-    const u = new URL(url.toLowerCase());
-    u.hostname = u.hostname.replace(/^www\./, '');
-    u.pathname = u.pathname.replace(/\/+$/, '') || '/';
-    u.hash = '';
-    for (const k of [...u.searchParams.keys()]) {
-      if (TRACKING_P.has(k) || k.startsWith('utm_')) u.searchParams.delete(k);
-    }
-    u.searchParams.sort();
-    return u.toString();
-  } catch { return url.toLowerCase(); }
-}
-
-function findDuplicateGroups() {
-  const groups = new Map();
-  for (const bm of allBookmarks) {
-    const key = normalizeUrl(bm.url);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(bm);
-  }
-  return [...groups.values()].filter((g) => g.length > 1);
-}
 
 // --- Sort ---
 sortSelect.addEventListener('change', () => {
@@ -302,74 +270,6 @@ similarFilterClear.addEventListener('click', () => {
 });
 
 // --- Title parsing ---
-
-/**
- * Parse "Display Title | tag1, tag2" into { title, tags, parseError }.
- * parseError is a human-readable string when the tag section is malformed,
- * or null when everything is fine (including no tags at all).
- *
- * Rules that produce a parseError:
- *   - " | " present but nothing (or only whitespace) follows it
- *   - any individual tag is empty after trimming (e.g. "Title | , tag2")
- *   - any tag contains a pipe character (nested separators)
- */
-function parseTitle(raw) {
-  const sep = raw.indexOf(' | ');
-  if (sep === -1) return { title: raw, tags: [], parseError: null };
-
-  const title = raw.slice(0, sep).trim();
-  const rawTagSection = raw.slice(sep + 3);
-
-  if (!rawTagSection.trim()) {
-    return {
-      title,
-      tags: [],
-      parseError: `Sekcja etykiet jest pusta — usuń " | " lub dodaj etykietę`,
-    };
-  }
-
-  const parts = rawTagSection.split(',');
-  const emptyParts = parts.filter((t) => !t.trim());
-  if (emptyParts.length > 0) {
-    return {
-      title,
-      tags: parts.map((t) => t.trim()).filter(Boolean),
-      parseError: `Pusta etykieta w "${rawTagSection.trim()}" — usuń nadmiarowe przecinki`,
-    };
-  }
-
-  const tags = parts.map((t) => t.trim());
-  const withPipe = tags.filter((t) => t.includes('|'));
-  if (withPipe.length > 0) {
-    return {
-      title,
-      tags,
-      parseError: `Etykieta nie może zawierać "|": ${withPipe.map((t) => `"${t}"`).join(', ')}`,
-    };
-  }
-
-  return { title, tags, parseError: null };
-}
-
-/** Rebuild raw title from display title + tags array. */
-function buildRawTitle(title, tags) {
-  return tags.length > 0 ? `${title} | ${tags.join(', ')}` : title;
-}
-
-// --- Bookmarks ---
-
-function flattenBookmarks(nodes) {
-  const result = [];
-  for (const node of nodes) {
-    if (node.url) {
-      const raw = node.title || node.url;
-      const { title, tags, parseError } = parseTitle(raw);
-      result.push({ id: node.id, rawTitle: raw, title, url: node.url, tags, parseError, dateAdded: node.dateAdded || 0 });
-    }
-    if (node.children) result.push(...flattenBookmarks(node.children));
-  }
-  return result;
-}
 
 function sortBookmarks(list) {
   if (currentSort === 'default') return list;
@@ -391,12 +291,12 @@ function sortBookmarks(list) {
 function filterBookmarks(query) {
   let list = allBookmarks;
   if (showOnlyStale) {
-    list = list.filter(isStale);
+    list = list.filter((bm) => isStale(bm, bookmarkStats, pluginInstalledAt));
   } else if (showOnlyDuplicates) {
-    const dupIds = new Set(findDuplicateGroups().flat().map((b) => b.id));
+    const dupIds = new Set(findDuplicateGroups(allBookmarks).flat().map((b) => b.id));
     list = list.filter((bm) => dupIds.has(bm.id));
   } else if (activeSimilarTo) {
-    const ids = new Set(findSimilar(activeSimilarTo).map((b) => b.id));
+    const ids = new Set(findSimilar(activeSimilarTo, allBookmarks).map((b) => b.id));
     list = list.filter((bm) => ids.has(bm.id));
   } else if (activeTagFilter) {
     list = list.filter((bm) => bm.tags.includes(activeTagFilter));
@@ -656,7 +556,7 @@ function toggleTagEditor(bm, li, btn) {
         const rawTitleBefore = bm.rawTitle;
         bm.tags = bm.tags.filter((t) => t !== tag);
         bm.rawTitle = buildRawTitle(bm.title, bm.tags);
-        chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+        bookmarksApi.update(bm.id, { title: bm.rawTitle }).catch((err) => showToast(`Błąd: ${err.message}`, 'err'));
         historyPush({ type: 'tag_remove', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
         renderEditorChips();
         refreshRowTags(bm, li);
@@ -689,7 +589,7 @@ function toggleTagEditor(bm, li, btn) {
     const rawTitleBefore = bm.rawTitle;
     bm.tags = [...bm.tags, tag];
     bm.rawTitle = buildRawTitle(bm.title, bm.tags);
-    chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+    bookmarksApi.update(bm.id, { title: bm.rawTitle }).catch((err) => showToast(`Błąd: ${err.message}`, 'err'));
     historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
     renderEditorChips();
     refreshRowTags(bm, li);
@@ -764,7 +664,7 @@ function startEdit(bm, li) {
     li.replaceWith(createBookmarkRow(bm, currentQuery));
   });
 
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const newTitle = titleInput.value.trim();
     const newUrl = urlInput.value.trim();
@@ -773,7 +673,8 @@ function startEdit(bm, li) {
 
     const snapshot = { type: 'edit', id: bm.id, title: bm.title, rawTitleBefore: bm.rawTitle, urlBefore: bm.url, ts: Date.now() };
     const newRaw = buildRawTitle(newTitle, newTags);
-    chrome.bookmarks.update(bm.id, { title: newRaw, url: newUrl }, () => {
+    try {
+      await bookmarksApi.update(bm.id, { title: newRaw, url: newUrl });
       historyPush(snapshot);
       bm.title = newTitle;
       bm.url = newUrl;
@@ -782,16 +683,17 @@ function startEdit(bm, li) {
       li.classList.remove('bookmark-row--editing');
       li.replaceWith(createBookmarkRow(bm, currentQuery));
       updateResultsCount();
-      showToast(`Zapisano „${newTitle}"`, 'ok', () => {
-        undoHistoryEntry(snapshot, () => {
-          chrome.bookmarks.getTree((tree) => {
-            allBookmarks = flattenBookmarks(tree);
-            renderBookmarks(filterBookmarks(currentQuery), currentQuery);
-            showToast('Cofnięto edycję', 'ok');
-          });
+      showToast(`Zapisano „${newTitle}"`, 'ok', async () => {
+        await undoHistoryEntry(snapshot, async () => {
+          const tree = await bookmarksApi.getTree();
+          allBookmarks = flattenBookmarks(tree);
+          renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+          showToast('Cofnięto edycję', 'ok');
         });
       });
-    });
+    } catch (err) {
+      showToast(`Błąd zapisu: ${err.message}`, 'err');
+    }
   });
 
   btnRow.appendChild(saveBtn);
@@ -857,14 +759,16 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !modalOverlay.hidden) closeModal();
 });
 
-modalConfirm.addEventListener('click', () => {
+modalConfirm.addEventListener('click', async () => {
   if (!pendingDelete) return;
   const { id, li } = pendingDelete;
   const bm = allBookmarks.find((b) => b.id === id);
   const snapshot = bm
     ? { type: 'delete', title: bm.title, rawTitle: bm.rawTitle, url: bm.url, ts: Date.now() }
     : null;
-  chrome.bookmarks.remove(id, () => {
+  closeModal();
+  try {
+    await bookmarksApi.remove(id);
     if (snapshot) historyPush(snapshot);
     allBookmarks = allBookmarks.filter((b) => b.id !== id);
     li.remove();
@@ -877,19 +781,19 @@ modalConfirm.addEventListener('click', () => {
         : 'Brak zakładek';
     }
     if (snapshot) {
-      showToast(`Usunięto „${snapshot.title}"`, 'ok', () => {
-        undoHistoryEntry(snapshot, () => {
-          chrome.bookmarks.getTree((tree) => {
-            allBookmarks = flattenBookmarks(tree);
-            renderBookmarks(filterBookmarks(currentQuery), currentQuery);
-            checkDuplicates();
-            showToast('Cofnięto usunięcie', 'ok');
-          });
+      showToast(`Usunięto „${snapshot.title}"`, 'ok', async () => {
+        await undoHistoryEntry(snapshot, async () => {
+          const tree = await bookmarksApi.getTree();
+          allBookmarks = flattenBookmarks(tree);
+          renderBookmarks(filterBookmarks(currentQuery), currentQuery);
+          checkDuplicates();
+          showToast('Cofnięto usunięcie', 'ok');
         });
       });
     }
-  });
-  closeModal();
+  } catch (err) {
+    showToast(`Błąd usuwania: ${err.message}`, 'err');
+  }
 });
 
 function deleteBookmark(id, li) {
@@ -907,18 +811,9 @@ function closeModal() {
 
 // --- Open bookmark ---
 
-const ALLOWED_PROTOCOLS = ['http:', 'https:', 'ftp:', 'file:'];
-
 function openBookmark(bm) {
   const url = bm.url;
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    openErrorPage(url);
-    return;
-  }
-  if (!ALLOWED_PROTOCOLS.includes(parsed.protocol)) {
+  if (!isAllowedProtocol(url)) {
     openErrorPage(url);
     return;
   }
@@ -956,102 +851,6 @@ function copyLink(url, btn) {
       btn.classList.remove('copy-btn--copied');
     }, 1500);
   });
-}
-
-// --- Highlight & escape ---
-
-function highlight(text, query) {
-  const escaped = escapeHtml(text);
-  if (!query.trim()) return escaped;
-  const escapedQuery = escapeHtml(query);
-  const regex = new RegExp(escapeRegex(escapedQuery), 'gi');
-  return escaped.replace(regex, '<mark>$&</mark>');
-}
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-// --- SVG icons ---
-
-function svgEdit() {
-  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M13.5 3.5l3 3L7 16H4v-3L13.5 3.5z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-  </svg>`;
-}
-
-function svgTrash() {
-  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 6h12M8 6V4h4v2M7 6v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-}
-
-function svgCopy() {
-  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect x="7" y="7" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
-    <path d="M13 7V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-  </svg>`;
-}
-
-function svgCheck() {
-  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 10l5 5 7-7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-}
-
-// --- Similarity ---
-
-function findSimilar(bm) {
-  const host  = urlHostname(bm.url);
-  const words = sigWords(bm.title);
-  return allBookmarks.filter((other) => {
-    if (other.id === bm.id) return false;
-    if (host && urlHostname(other.url) === host) return true;
-    return sigWords(other.title).filter((w) => words.includes(w)).length >= 2;
-  });
-}
-
-function urlHostname(url) {
-  try { return new URL(url).hostname.replace(/^www\./, ''); }
-  catch { return null; }
-}
-
-function sigWords(title) {
-  return [...new Set(title.toLowerCase().split(/[\s\-_/.,]+/).filter((w) => w.length >= 4))];
-}
-
-function svgSimilar() {
-  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="5" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <circle cx="15" cy="5" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <circle cx="15" cy="15" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <path d="M7.5 10h2M9.5 10l3-4M9.5 10l3 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-  </svg>`;
-}
-
-function svgWarn() {
-  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M10 7v4M10 13h.01M8.57 2.9L1.52 15a1.67 1.67 0 0 0 1.43 2.5h14.1A1.67 1.67 0 0 0 18.48 15L11.43 2.9a1.67 1.67 0 0 0-2.86 0z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-}
-
-function svgLabel() {
-  return `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M3 10L10 3h7v7l-7 7-7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-    <circle cx="13.5" cy="6.5" r="1" fill="currentColor"/>
-  </svg>`;
-}
-
-function svgAI() {
-  return `<svg viewBox="0 0 20 20" fill="none"><path d="M10 2l1.5 4.5L16 8l-4.5 1.5L10 15l-1.5-4.5L4 8l4.5-1.5L10 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M16 2l.8 2L19 5l-2.2.8L16 8l-.8-2.2L13 5l2.2-.8L16 2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>`;
 }
 
 // --- AI tag suggestions ---
@@ -1107,7 +906,7 @@ function showAISuggestPanel(bm, li, onTagAdded) {
       const rawTitleBefore = bm.rawTitle;
       bm.tags = [...bm.tags, tag];
       bm.rawTitle = buildRawTitle(bm.title, bm.tags);
-      chrome.bookmarks.update(bm.id, { title: bm.rawTitle });
+      bookmarksApi.update(bm.id, { title: bm.rawTitle }).catch((err) => showToast(`Błąd: ${err.message}`, 'err'));
       historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
       chip.remove();
       onTagAdded(bm);
@@ -1204,11 +1003,7 @@ async function importBookmarks(file) {
 
     const rawTitle = buildRawTitle(title, tags);
     try {
-      await new Promise((resolve, reject) =>
-        chrome.bookmarks.create({ title: rawTitle, url }, (bm) =>
-          chrome.runtime.lastError ? reject() : resolve(bm)
-        )
-      );
+      await bookmarksApi.create({ title: rawTitle, url });
       added++;
     } catch {
       skipped++;
@@ -1216,10 +1011,13 @@ async function importBookmarks(file) {
   }
 
   // Reload list
-  chrome.bookmarks.getTree((tree) => {
+  try {
+    const tree = await bookmarksApi.getTree();
     allBookmarks = flattenBookmarks(tree);
     renderBookmarks(filterBookmarks(currentQuery), currentQuery);
-  });
+  } catch (err) {
+    showToast(`Błąd odświeżania: ${err.message}`, 'err');
+  }
 
   if (added === 0) {
     showToast(`Nic nie dodano — ${skipped} pominiętych (duplikaty)`, 'warn');
@@ -1229,58 +1027,6 @@ async function importBookmarks(file) {
       : `Zaimportowano ${added} zakładek`;
     showToast(msg, 'ok');
   }
-}
-
-// --- CSV helpers ---
-
-/** Encode a single CSV row (RFC 4180). */
-function csvRow(fields) {
-  return fields.map((f) => {
-    const s = String(f ?? '');
-    return (s.includes(',') || s.includes('"') || s.includes('\n'))
-      ? `"${s.replace(/"/g, '""')}"`
-      : s;
-  }).join(',');
-}
-
-/**
- * Parse CSV text into a 2-D array of strings (RFC 4180, UTF-8 with optional BOM).
- * Handles quoted fields, embedded commas, newlines and doubled-quote escapes.
- */
-function parseCsv(text) {
-  // Strip BOM if present
-  const src = text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text;
-  const rows = [];
-  let row = [], field = '', inQuotes = false, i = 0;
-
-  while (i < src.length) {
-    const ch = src[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (src[i + 1] === '"') { field += '"'; i += 2; continue; } // escaped quote
-        inQuotes = false;
-      } else {
-        field += ch;
-      }
-    } else {
-      if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === ',') {
-        row.push(field); field = '';
-      } else if (ch === '\r' || ch === '\n') {
-        if (ch === '\r' && src[i + 1] === '\n') i++;
-        row.push(field); field = '';
-        if (row.some((f) => f !== '')) rows.push(row);
-        row = [];
-      } else {
-        field += ch;
-      }
-    }
-    i++;
-  }
-  row.push(field);
-  if (row.some((f) => f !== '')) rows.push(row);
-  return rows;
 }
 
 // --- Toast ---
@@ -1308,8 +1054,3 @@ function showToast(msg, type = 'ok', undoFn = null) {
   toastTimer = setTimeout(() => { toastEl.hidden = true; }, undoFn ? 6000 : 3500);
 }
 
-// --- Date stamp for filename ---
-function dateStamp() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
