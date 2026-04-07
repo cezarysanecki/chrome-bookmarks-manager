@@ -812,6 +812,47 @@ let pendingDelete = null;
 
 modalCancel.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+// --- Keyboard navigation ---
+
+let highlightedIndex = -1;
+
+function getRows() {
+  return [...bookmarksList.querySelectorAll('.bookmark-row:not([hidden])')];
+}
+
+function setHighlight(index) {
+  const rows = getRows();
+  rows.forEach((r) => r.classList.remove('highlighted'));
+  highlightedIndex = Math.max(-1, Math.min(index, rows.length - 1));
+  if (highlightedIndex >= 0) {
+    rows[highlightedIndex].classList.add('highlighted');
+    rows[highlightedIndex].scrollIntoView({ block: 'nearest' });
+  }
+}
+
+searchInput.addEventListener('keydown', (e) => {
+  if (bookmarksList.hidden) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    setHighlight(highlightedIndex + 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (highlightedIndex <= 0) { setHighlight(-1); return; }
+    setHighlight(highlightedIndex - 1);
+  } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+    e.preventDefault();
+    const rows = getRows();
+    const id = rows[highlightedIndex]?.dataset.id;
+    const bm = allBookmarks.find((b) => b.id === id);
+    if (bm) openBookmark(bm);
+  } else if (e.key === 'Escape') {
+    if (highlightedIndex >= 0) { setHighlight(-1); return; }
+  }
+});
+
+// Reset highlight on new search results
+searchInput.addEventListener('input', () => { highlightedIndex = -1; });
+
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !modalOverlay.hidden) closeModal();
 });

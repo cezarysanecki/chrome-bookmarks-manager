@@ -443,17 +443,26 @@ main::-webkit-scrollbar-thumb {
   transition: background 0.1s, border-color 0.1s;
 }
 
-.bookmark-row:hover {
+.bookmark-row:hover,
+.bookmark-row.highlighted {
   background: var(--surface-hover);
   border-color: var(--border);
 }
 
-.bookmark-row:hover .bookmark-actions {
+.bookmark-row.highlighted {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.bookmark-row:hover .bookmark-actions,
+.bookmark-row.highlighted .bookmark-actions {
   opacity: 1;
   pointer-events: all;
 }
 
-.bookmark-row:hover .copy-btn {
+.bookmark-row:hover .copy-btn,
+.bookmark-row.highlighted .copy-btn {
   opacity: 1;
 }
 
