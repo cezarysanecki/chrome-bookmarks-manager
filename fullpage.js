@@ -161,9 +161,12 @@ async function initBookmarks() {
 }
 
 if (chrome.storage?.local) {
-  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.INSTALLED_AT], (data) => {
+  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.INSTALLED_AT, 'bm_view_prefs'], (data) => {
     applySettings(data[STORAGE_KEYS.SETTINGS] || {});
     bookmarkStats = data[STORAGE_KEYS.STATS] || {};
+    const prefs = data.bm_view_prefs || {};
+    if (prefs.gridMode)  { gridMode  = true; document.getElementById('btn-grid').classList.add('toggle-btn--active'); }
+    if (prefs.groupMode) { groupMode = true; btnGroup.classList.add('toggle-btn--active'); }
     if (data[STORAGE_KEYS.INSTALLED_AT]) {
       pluginInstalledAt = data[STORAGE_KEYS.INSTALLED_AT];
     } else {
@@ -215,10 +218,17 @@ filterClearEl.addEventListener('click', () => {
   setTagFilter(null);
 });
 
+function saveViewPrefs() {
+  if (chrome.storage?.local) {
+    chrome.storage.local.set({ bm_view_prefs: { gridMode, groupMode } });
+  }
+}
+
 // --- Group toggle ---
 btnGroup.addEventListener('click', () => {
   groupMode = !groupMode;
   btnGroup.classList.toggle('toggle-btn--active', groupMode);
+  saveViewPrefs();
   renderAll();
 });
 
@@ -226,6 +236,7 @@ btnGroup.addEventListener('click', () => {
 document.getElementById('btn-grid').addEventListener('click', () => {
   gridMode = !gridMode;
   document.getElementById('btn-grid').classList.toggle('toggle-btn--active', gridMode);
+  saveViewPrefs();
   renderAll();
 });
 
@@ -604,10 +615,10 @@ function renderAll() {
     return;
   }
 
-  if (gridMode) {
-    renderGrid(list);
-  } else if (groupMode && !activeTag) {
+  if (groupMode && !activeTag) {
     renderGrouped(list);
+  } else if (gridMode) {
+    renderGrid(list);
   } else {
     renderFlat(list);
   }
@@ -803,7 +814,14 @@ function createGroup(label, bms) {
 
   const body = document.createElement('div');
   body.className = 'group-body';
-  for (const bm of bms) body.appendChild(createRow(bm));
+  if (gridMode) {
+    const grid = document.createElement('div');
+    grid.className = 'bm-grid';
+    for (const bm of sortBookmarks(bms)) grid.appendChild(createCard(bm));
+    body.appendChild(grid);
+  } else {
+    for (const bm of bms) body.appendChild(createRow(bm));
+  }
 
   header.addEventListener('click', () => {
     const collapsed = body.classList.toggle('collapsed');
