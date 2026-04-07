@@ -1052,5 +1052,11 @@ function showToast(msg, type = 'ok', undoFn = null) {
   toastEl.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { toastEl.hidden = true; }, undoFn ? 6000 : 3500);
+  toastEl.onclick = (e) => {
+    if (e.target === toastEl || e.target === span) {
+      clearTimeout(toastTimer);
+      toastEl.hidden = true;
+    }
+  };
 }
 
