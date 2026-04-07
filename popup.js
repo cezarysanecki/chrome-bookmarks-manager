@@ -832,13 +832,13 @@ function setHighlight(index) {
 
 searchInput.addEventListener('keydown', (e) => {
   if (bookmarksList.hidden) return;
+  const count = getRows().length;
   if (e.key === 'ArrowDown') {
     e.preventDefault();
-    setHighlight(highlightedIndex + 1);
+    setHighlight(highlightedIndex >= count - 1 ? 0 : highlightedIndex + 1);
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    if (highlightedIndex <= 0) { setHighlight(-1); return; }
-    setHighlight(highlightedIndex - 1);
+    setHighlight(highlightedIndex <= 0 ? count - 1 : highlightedIndex - 1);
   } else if (e.key === 'Enter' && highlightedIndex >= 0) {
     e.preventDefault();
     const rows = getRows();
