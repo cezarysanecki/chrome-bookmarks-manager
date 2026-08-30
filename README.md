@@ -144,7 +144,7 @@ Klucz OpenAI przechowywany jest wyłącznie lokalnie w przeglądarce i trafia ty
 
 ## Prywatność i bezpieczeństwo
 
-- Wszystkie dane zakładek pozostają w Chrome — żadne informacje nie są wysyłane na zewnętrzne serwery (z wyjątkiem opcjonalnych wywołań OpenAI API, gdy funkcja AI jest włączona).
+- Dane zakładek, historia zmian i ustawienia są przechowywane lokalnie. Opcjonalne funkcje mogą wysyłać żądania HEAD do adresów zakładek, pobierać favicony z Google lub przesyłać tytuł i URL do OpenAI.
 - Etykiety są przechowywane bezpośrednio w tytule zakładki Chrome — synchronizują się automatycznie między urządzeniami przez konto Google, bez dodatkowej infrastruktury.
 - Historia zmian i ustawienia zapisywane są lokalnie (`chrome.storage.local`) i nie opuszczają przeglądarki.
 

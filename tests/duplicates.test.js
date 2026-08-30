@@ -49,6 +49,22 @@ describe('findDuplicateGroups', () => {
     ];
     expect(findDuplicateGroups(bookmarks)).toEqual([]);
   });
+
+  it('does not group URLs whose case-sensitive paths differ', () => {
+    const bookmarks = [
+      bm('1', 'https://example.com/products/item'),
+      bm('2', 'https://example.com/products/ITEM'),
+    ];
+    expect(findDuplicateGroups(bookmarks)).toEqual([]);
+  });
+
+  it('does not group URLs with different ports', () => {
+    const bookmarks = [
+      bm('1', 'http://localhost:448/page'),
+      bm('2', 'http://localhost:900/page'),
+    ];
+    expect(findDuplicateGroups(bookmarks)).toEqual([]);
+  });
 });
 
 describe('sigWords', () => {

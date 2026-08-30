@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { normalizeUrl, cleanTrackingParams, urlHostname, isAllowedProtocol } from '../src/lib/url.js';
 
 describe('normalizeUrl', () => {
-  it('returns lowercase URL', () => {
-    expect(normalizeUrl('HTTPS://EXAMPLE.COM/PATH')).toBe('https://example.com/path');
+  it('lowercases the protocol and hostname but preserves path casing', () => {
+    expect(normalizeUrl('HTTPS://EXAMPLE.COM/PATH')).toBe('https://example.com/PATH');
   });
 
   it('strips www. from hostname', () => {
@@ -34,6 +34,14 @@ describe('normalizeUrl', () => {
 
   it('preserves functional query params', () => {
     expect(normalizeUrl('https://example.com/search?q=hello')).toBe('https://example.com/search?q=hello');
+  });
+
+  it('preserves functional query param value casing', () => {
+    expect(normalizeUrl('https://example.com/search?q=Hello')).toBe('https://example.com/search?q=Hello');
+  });
+
+  it('preserves the port', () => {
+    expect(normalizeUrl('https://example.com:8443/page')).toBe('https://example.com:8443/page');
   });
 
   it('returns lowercased string for unparsable URL', () => {

@@ -362,7 +362,7 @@
         <svg viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.3L10 14.3l-4.8 2.5.9-5.3L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
       </div>
       <h3>AI tag suggestions <span style="font-size:11px;color:#5a5a7a;font-weight:400">(optional)</span></h3>
-      <p>Bring your own OpenAI API key and get instant tag suggestions from GPT-4o mini. Disabled by default, no data leaves your device without it.</p>
+      <p>Bring your own OpenAI API key and get instant tag suggestions from GPT-4o mini. Disabled by default; the bookmark title and URL are sent only when you request suggestions.</p>
     </div>
 
   </div>
@@ -395,17 +395,17 @@
 <!-- PRIVACY -->
 <section class="privacy" id="privacy">
   <h2>Privacy Policy</h2>
-  <p class="sub">Last updated: April 2026 · Applies to version 1.0.0 and later</p>
+  <p class="sub">Last updated: August 2026 · Applies to version 1.0.0 and later</p>
 
   <div class="privacy-highlight">
-    <strong>Summary:</strong> Bookmarks Manager stores all data locally on your device using
-    <code>chrome.storage.local</code>. No personal data is collected, transmitted, or shared
-    with any third party — except when you explicitly enable the optional AI feature and provide
-    your own OpenAI API key.
+    <strong>Summary:</strong> Bookmarks Manager stores settings, history, and statistics locally
+    using <code>chrome.storage.local</code>. Optional features can contact bookmarked sites to
+    check link availability, Google to retrieve favicons, or OpenAI to generate tag suggestions.
+    The extension developer does not receive this data.
   </div>
 
   <h3>What data we store</h3>
-  <p>All data is stored exclusively in your browser's local storage and never leaves your device unless noted below.</p>
+  <p>Settings, history, and statistics are stored exclusively in your browser's local storage. Optional network features are described below.</p>
   <table>
     <thead><tr><th>Key</th><th>Contents</th><th>Purpose</th></tr></thead>
     <tbody>
@@ -429,6 +429,13 @@
     </tbody>
   </table>
 
+  <h3>Optional network features</h3>
+  <p>
+    Dead-link checking sends HTTP HEAD requests to bookmarked sites and inspects only response
+    status codes. Favicon display sends bookmark domains to Google's favicon service. These
+    features are disabled by default.
+  </p>
+
   <h3>Optional AI feature</h3>
   <p>
     The AI tag suggestion feature is <strong>disabled by default</strong> and requires you to
@@ -439,7 +446,7 @@
   </p>
 
   <h3>Data sharing</h3>
-  <p>We do not collect, sell, rent, or share any of your data. No analytics, crash reporting, or telemetry of any kind.</p>
+  <p>We do not collect, sell, or rent any data. Data is sent to bookmarked sites, Google, or OpenAI only when the corresponding optional feature is used. No analytics, crash reporting, or telemetry of any kind.</p>
 
   <h3>Data deletion</h3>
   <p>Go to <strong>chrome://extensions</strong>, find Bookmarks Manager and click <em>Remove</em> to delete all stored data. You can also clear individual storage keys from the extension's Settings panel.</p>

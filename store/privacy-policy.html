@@ -100,19 +100,19 @@
       <span class="logo-name">Bookmarks Manager</span>
     </div>
     <h1>Privacy Policy</h1>
-    <p class="meta">Last updated: April 2026 &nbsp;·&nbsp; Applies to Chrome extension version 1.0.0 and later</p>
+    <p class="meta">Last updated: August 2026 &nbsp;·&nbsp; Applies to Chrome extension version 1.0.0 and later</p>
   </header>
 
   <div class="highlight">
-    <strong>Summary:</strong> Bookmarks Manager stores all data locally on your device using
-    <code>chrome.storage.local</code>. No personal data is collected, transmitted, or shared
-    with any third party — except when you explicitly enable the optional AI feature and provide
-    your own OpenAI API key.
+    <strong>Summary:</strong> Bookmarks Manager stores settings, history, and statistics locally
+    using <code>chrome.storage.local</code>. Optional features can contact bookmarked sites to
+    check link availability, Google to retrieve favicons, or OpenAI to generate tag suggestions.
+    The extension developer does not receive this data.
   </div>
 
   <h2>1. What data we store</h2>
-  <p>All data is stored exclusively in your browser's local storage (<code>chrome.storage.local</code>)
-     and never leaves your device unless noted below.</p>
+  <p>Settings, history, and statistics are stored exclusively in your browser's local storage
+     (<code>chrome.storage.local</code>). Optional network features are described below.</p>
 
   <div class="table-wrap">
     <table>
@@ -184,7 +184,19 @@
     </table>
   </div>
 
-  <h2>3. Optional AI feature</h2>
+  <h2>3. Optional network features</h2>
+  <p>
+    When dead-link checking is enabled, the extension sends an HTTP HEAD request to each checked
+    bookmark URL. The destination server receives the request and may process standard request
+    metadata such as the IP address. The extension inspects only the response status and does not
+    read page content.
+  </p>
+  <p>
+    When favicon display is enabled, the bookmark domain is sent to Google's favicon service
+    (<code>www.google.com/s2/favicons</code>) to retrieve the corresponding icon.
+  </p>
+
+  <h2>4. Optional AI feature</h2>
   <p>
     The extension includes an optional AI-assisted tag suggestion feature powered by OpenAI.
     This feature is <strong>disabled by default</strong> and requires you to:
@@ -202,34 +214,35 @@
     applies to that interaction.
   </p>
 
-  <h2>4. Data sharing</h2>
+  <h2>5. Data sharing</h2>
   <p>
-    We do not collect, sell, rent, or share any of your data with third parties.
+    We do not collect, sell, or rent any of your data. Data is sent to bookmarked sites, Google,
+    or OpenAI only when the corresponding optional feature described above is used.
     No analytics, crash reporting, or telemetry services are used.
     No data is transmitted to the extension developer.
   </p>
 
-  <h2>5. Data retention &amp; deletion</h2>
+  <h2>6. Data retention &amp; deletion</h2>
   <p>
     All locally stored data is retained until you remove it. You can clear all extension data at
     any time by going to <strong>chrome://extensions</strong>, finding Bookmarks Manager, and
     clicking <em>Remove</em>, or by clearing site data for the extension in Chrome settings.
   </p>
 
-  <h2>6. Children's privacy</h2>
+  <h2>7. Children's privacy</h2>
   <p>
     This extension does not knowingly collect any information from children under the age of 13.
     It does not involve any data collection beyond what is described in this policy.
   </p>
 
-  <h2>7. Changes to this policy</h2>
+  <h2>8. Changes to this policy</h2>
   <p>
     If this policy changes materially, the updated version will be published at this URL and the
     extension version number will be incremented. Continued use of the extension after such
     changes constitutes acceptance of the updated policy.
   </p>
 
-  <h2>8. Contact</h2>
+  <h2>9. Contact</h2>
   <p>
     If you have questions about this privacy policy, please open an issue in the extension's
     source repository or contact the developer directly via the Chrome Web Store developer page.

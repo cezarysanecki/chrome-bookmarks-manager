@@ -65,7 +65,7 @@ Wyświetla ikonę domeny przy każdej zakładce na liście.
 
 ━━━ PRYWATNOŚĆ ━━━
 
-Żadne dane nie opuszczają Twojej przeglądarki — z wyjątkiem opcjonalnych wywołań OpenAI API (tylko gdy funkcja AI jest aktywna). Historia zmian i ustawienia zapisywane są lokalnie.
+Dane zakładek, historia zmian i ustawienia są przechowywane lokalnie. Po włączeniu funkcji opcjonalnych rozszerzenie wysyła żądania HEAD do adresów zakładek, pobiera favicony z Google lub przesyła tytuł i URL do OpenAI w celu wygenerowania etykiet.
 ```
 
 ---
@@ -123,7 +123,7 @@ This means tags automatically sync across your devices via your Google account �
 
 ━━━ PRIVACY ━━━
 
-No data leaves your browser except optional OpenAI API calls when AI is enabled. Settings and history stored locally only.
+Bookmark data, change history, and settings are stored locally. Optional features send HEAD requests to bookmarked sites, fetch favicons from Google, or send a bookmark title and URL to OpenAI for tag suggestions.
 ```
 
 ---

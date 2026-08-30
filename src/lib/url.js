@@ -87,11 +87,11 @@ export function normalizeUrl(rawUrl) {
   }
 
   u.hash = '';
-  const host = u.hostname.replace(/^www\./, '');
+  const host = u.host.replace(/^www\./, '');
   const path = u.pathname.replace(/\/+$/, '') || '/';
   const query = u.search;
 
-  return `${u.protocol}//${host}${path}${query}`.toLowerCase();
+  return `${u.protocol}//${host}${path}${query}`;
 }
 
 /** Extract hostname (without www.) from a URL string; returns '' on parse failure. */
