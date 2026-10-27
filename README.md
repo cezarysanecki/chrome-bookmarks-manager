@@ -145,3 +145,7 @@ npm test
 ```
 
 Tests use Vitest.
+
+## License
+
+MIT, see [`LICENSE`](LICENSE).
