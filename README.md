@@ -5,147 +5,143 @@
 <h1 align="center">Bookmarks Manager</h1>
 
 <p align="center">
-  Prywatny menedżer zakładek Chrome z wyszukiwaniem, etykietami, statystykami otwarć i opcjonalnym AI.<br>
-  Bez kont, bez chmury, bez reklam.
+  A private Chrome bookmarks manager with search, labels, open statistics and optional AI.<br>
+  No accounts, no cloud, no ads.
 </p>
 
 <p align="center">
-  <a href="https://cezarysanecki.github.io/chrome-bookmarks-manager/">🌐 Strona projektu</a>
+  <a href="https://cezarysanecki.github.io/chrome-bookmarks-manager/">Project page</a>
 </p>
 
 ---
 
 <p align="center">
-  <img src="store/screenshot-popup.png" width="49%" alt="Popup — wyszukiwanie i lista zakładek">
-  <img src="store/screenshot-fullpage.png" width="49%" alt="Widok pełny — siatka z panelem etykiet">
+  <img src="store/screenshot-popup.png" width="49%" alt="Popup: search and bookmark list">
+  <img src="store/screenshot-fullpage.png" width="49%" alt="Full view: grid with the labels panel">
 </p>
 
 ---
 
-## Instalacja
+The extension works on Chrome's own bookmarks, so nothing has to be imported or synced separately. The interface is in Polish 🇵🇱 PL.
 
-**Ze sklepu Chrome** *(zalecane)*
-Wejdź na stronę rozszerzenia w Chrome Web Store i kliknij **Dodaj do Chrome**.
+## Installation
 
-**Ręcznie (tryb dewelopera)**
-1. Pobierz lub sklonuj repozytorium.
-2. Otwórz Chrome i przejdź do `chrome://extensions`.
-3. Włącz **Tryb dewelopera** (prawy górny róg).
-4. Kliknij **Wczytaj rozpakowane** i wskaż folder z rozszerzeniem.
+1. Download or clone the repository.
+2. Open `chrome://extensions` in Chrome.
+3. Turn on **Developer mode** (top right corner).
+4. Click **Load unpacked** and select the extension folder.
 
----
+## Quick start
 
-## Szybki start
-
-| Akcja | Jak |
+| Action | How |
 |---|---|
-| Otwórz menedżer | Kliknij ikonę na pasku **lub** `Ctrl+Shift+B` |
-| Dodaj zakładkę z aktywnej strony | `Ctrl+Shift+D` |
-| Otwórz widok pełnoekranowy | Przycisk **Widok** w popupie |
-| Wyszukaj zakładkę | Zacznij pisać — wyniki filtrują się w czasie rzeczywistym |
+| Open the manager | Click the toolbar icon or press `Ctrl+Shift+B` |
+| Bookmark the current page | `Ctrl+Shift+D` |
+| Open the full-page view | **Widok** button in the popup |
+| Search | Start typing; results filter as you type |
 
----
+## Features
 
-## Funkcje
+### Search
+Search matches the **title, URL and labels**, anywhere in the text, not only at the beginning.
 
-### Wyszukiwanie
-Wyszukiwanie działa na **tytule, URL i etykietach** — nie tylko od początku, ale też w środku i na końcu tekstu. Wystarczy wpisać fragment.
-
-### Etykiety
-Zakładki można oznaczać etykietami w celu grupowania tematycznego. Format w tytule:
+### Labels
+Bookmarks can be grouped by labels. Labels are stored in the bookmark title:
 
 ```
-Nazwa strony | etykieta1, etykieta2
+Page name | label1, label2
 ```
 
-- Kliknij ikonę **etykiety** przy zakładce, aby dodać lub usunąć etykiety.
-- Kliknij etykietę na liście, aby przefiltrować wyłącznie zakładki z tą etykietą.
-- W widoku pełnym lewy panel pokazuje wszystkie etykiety z liczbą zakładek.
-- Pasek **Bez etykiet** w popupie pozwala szybko wyfiltrować zakładki bez żadnej etykiety.
+- Click the **label** icon next to a bookmark to add or remove labels.
+- Click a label in the list to show only bookmarks with that label.
+- In the full-page view the left panel lists all labels with bookmark counts.
+- The **Bez etykiet** bar in the popup shows bookmarks without any label.
 
-### Statystyki otwarć i sortowanie popularności
-Każde otwarcie zakładki jest zliczane. Przy zakładce widoczna jest plakietka `↗ N` z liczbą otwarć. Domyślne sortowanie **Najpopularniejsze** pokazuje najczęściej używane zakładki na górze. Dostępne opcje sortowania:
+### Open statistics and sorting by popularity
+Every time a bookmark is opened, it is counted. A `↗ N` badge shows the count. The default **Najpopularniejsze** sort puts the most used bookmarks on top. Other sort options:
 
-- Najpopularniejsze (domyślne)
-- Domyślna kolejność (z Chrome)
+- Chrome's default order
 - A → Z / Z → A
-- Według domeny
+- By domain
 
-Wybrane sortowanie jest zapamiętywane między sesjami.
+The chosen sort is remembered between sessions.
 
-### Nieużywane zakładki (30+ dni)
-Rozszerzenie wykrywa zakładki, których nie otwierałeś przez ponad 30 dni. W popupie pojawia się niebieski pasek z licznikiem i przyciskiem **Pokaż** do szybkiego przejrzenia.
+### Unused bookmarks (30+ days)
+The extension finds bookmarks that have not been opened for more than 30 days. The popup shows a bar with their count and a **Pokaż** button to review them.
 
-### Edycja i usuwanie
-Najedź kursorem na zakładkę, aby zobaczyć przyciski akcji:
-- **Edytuj** — zmień tytuł, URL i etykiety bezpośrednio na liście.
-- **Usuń** — pojawi się okno potwierdzenia. Po usunięciu masz **6 sekund** na cofnięcie akcji przyciskiem **Cofnij** w powiadomieniu.
+### Editing and deleting
+Hover over a bookmark to see the actions:
+- **Edit**: change the title, URL and labels in place.
+- **Delete**: asks for confirmation. After deleting, you have **6 seconds** to undo it from the notification.
 
-### Historia zmian i cofanie (Undo)
-Każde usunięcie, edycja i zmiana etykiety jest rejestrowana. W widoku pełnym lewy panel zawiera sekcję **Historia** z ostatnimi operacjami — każdą można cofnąć przyciskiem `↩`.
+### Change history and undo
+Every delete, edit and label change is recorded. In the full-page view the **Historia** section lists recent operations, and each one can be undone with `↩`.
 
-### Kopiowanie linku
-Ikona kopiowania jest zawsze widoczna przy każdej zakładce — kliknięcie natychmiast kopiuje adres URL do schowka.
+### Copying a link
+The copy icon next to each bookmark copies its URL to the clipboard.
 
-### Podobne zakładki
-Przycisk **Podobne** przy zakładce filtruje listę do zakładek z tej samej domeny lub o zbliżonym tytule — przydatne do odkrywania duplikatów tematycznych.
+### Similar bookmarks
+The **Podobne** button filters the list to bookmarks from the same domain or with a similar title, which helps to find topical duplicates.
 
-### Wykrywanie duplikatów URL
-Rozszerzenie automatycznie porównuje adresy URL (ignorując `www`, parametry śledzące, kotwice `#`). Jeśli wykryje duplikaty:
-- W popupie pojawi się żółty pasek z liczbą duplikatów i przyciskiem **Pokaż**.
-- W widoku pełnym — pozycja **Duplikaty** w lewym panelu grupuje je do przejrzenia i usunięcia.
+### Duplicate URLs
+The extension compares URLs while ignoring `www`, tracking parameters and `#` anchors. When it finds duplicates:
+- the popup shows a bar with their count and a **Pokaż** button,
+- the full-page view groups them under **Duplikaty** in the left panel, ready to review and delete.
 
-### Eksport i import CSV
-- **Eksport** — pobiera plik `.csv` z tytułami, URL-ami i etykietami wszystkich zakładek (kompatybilny z Excel).
-- **Import** — wczytuje plik `.csv` w tym samym formacie; zakładki już istniejące są pomijane.
+### CSV export and import
+- **Export** downloads a `.csv` file with the titles, URLs and labels of all bookmarks (opens in Excel).
+- **Import** reads a `.csv` file in the same format and skips bookmarks that already exist.
 
-Format kolumn: `title`, `url`, `tags` (etykiety oddzielone średnikiem).
+Columns: `title`, `url`, `tags` (labels separated by semicolons).
 
-### Widok siatki i grupowanie
-W widoku pełnym dostępne są dwa przełączniki:
-- **Siatka** — wyświetla zakładki jako kafelki zamiast listy.
-- **Grupuj** — grupuje zakładki według etykiet w osobne sekcje.
+### Grid view and grouping
+The full-page view has two switches that can be combined:
+- **Siatka** shows bookmarks as tiles instead of a list,
+- **Grupuj** groups bookmarks by label into sections.
 
-Oba tryby można łączyć. Wybrane ustawienia są zapamiętywane między sesjami.
+Both settings are remembered between sessions.
 
----
+## Settings
 
-## Ustawienia (widok pełny → przycisk Ustawienia)
+Open them from the full-page view with the **Ustawienia** button. `Escape` closes them.
 
-Ustawienia można zamknąć klawiszem `Escape`.
+### Favicons *(off by default)*
+Shows the domain icon next to each bookmark.
 
-### Favicon przy zakładkach *(domyślnie wyłączone)*
-Wyświetla ikonę domeny obok każdej zakładki na liście.
+### Dead link check *(off by default)*
+Each time the full-page view opens, the extension checks every bookmark with a HEAD request (6 s timeout). Bookmarks that may be unavailable get a **Potencjalnie niedostępny** badge.
 
-### Sprawdzanie martwych linków *(domyślnie wyłączone)*
-Przy każdym otwarciu widoku pełnego rozszerzenie sprawdza dostępność wszystkich zakładek (żądania HEAD, timeout 6 s). Potencjalnie niedostępne zakładki oznaczane są plakietką **Potencjalnie niedostępny**.
+> With many bookmarks this can slow the view down noticeably.
 
-> **Uwaga:** przy dużej liczbie zakładek może znacznie spowolnić działanie.
+### AI label suggestions *(off by default, needs an OpenAI key)*
+With an API key set, each bookmark gets a star button. Clicking it sends the title and URL to **GPT-4o mini** and shows suggested labels to pick from.
 
-### Sugestie etykiet AI *(domyślnie wyłączone, wymaga klucza OpenAI)*
-Po włączeniu i podaniu klucza API przy każdej zakładce pojawi się przycisk gwiazdki. Kliknięcie wysyła tytuł i URL do modelu **GPT-4o mini** i zwraca propozycje etykiet jako klikalne chipsy.
+The OpenAI key is stored only in the browser and is sent only to OpenAI.
 
-Klucz OpenAI przechowywany jest wyłącznie lokalnie w przeglądarce i trafia tylko do serwera OpenAI.
+## Keyboard shortcuts
 
----
-
-## Skróty klawiaturowe
-
-| Skrót | Działanie |
+| Shortcut | Action |
 |---|---|
-| `Ctrl+Shift+B` | Otwórz/zamknij popup menedżera |
-| `Ctrl+Shift+D` | Zapisz aktywną stronę jako zakładkę |
-| `↑` / `↓` | Nawigacja po liście zakładek w popupie |
-| `Enter` | Otwórz podświetloną zakładkę |
-| `/` | Skup fokus na polu wyszukiwania (widok pełny) |
-| `Escape` | Zamknij modal / ustawienia / wyczyść podświetlenie |
+| `Ctrl+Shift+B` | Open or close the popup |
+| `Ctrl+Shift+D` | Bookmark the current page |
+| `↑` / `↓` | Move through the list in the popup |
+| `Enter` | Open the highlighted bookmark |
+| `/` | Focus the search field (full-page view) |
+| `Escape` | Close a dialog or settings, clear the highlight |
 
----
+## Privacy
 
-## Prywatność i bezpieczeństwo
+- Bookmarks, change history and settings stay in the browser. Optional features can send HEAD requests to bookmark URLs, fetch favicons from Google, or send a title and URL to OpenAI.
+- Labels live in the Chrome bookmark title, so they sync between devices through your Google account with no extra infrastructure.
+- Change history and settings are saved in `chrome.storage.local` and never leave the browser.
 
-- Dane zakładek, historia zmian i ustawienia są przechowywane lokalnie. Opcjonalne funkcje mogą wysyłać żądania HEAD do adresów zakładek, pobierać favicony z Google lub przesyłać tytuł i URL do OpenAI.
-- Etykiety są przechowywane bezpośrednio w tytule zakładki Chrome — synchronizują się automatycznie między urządzeniami przez konto Google, bez dodatkowej infrastruktury.
-- Historia zmian i ustawienia zapisywane są lokalnie (`chrome.storage.local`) i nie opuszczają przeglądarki.
+Full privacy policy: [cezarysanecki.github.io/chrome-bookmarks-manager/#privacy](https://cezarysanecki.github.io/chrome-bookmarks-manager/#privacy)
 
-Pełna polityka prywatności: [cezarysanecki.github.io/chrome-bookmarks-manager/#privacy](https://cezarysanecki.github.io/chrome-bookmarks-manager/#privacy)
+## Development
+
+```bash
+npm install
+npm test
+```
+
+Tests use Vitest.
