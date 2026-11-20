@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findDuplicateGroups, findSimilar, sigWords } from '../src/bookmarks/duplicates.js';
+import { findBookmarkByUrl, findDuplicateGroups } from '../src/bookmarks/duplicates.js';
 
 function bm(id, url, title = '') {
   return { id, url, title };
@@ -12,6 +12,18 @@ describe('findDuplicateGroups', () => {
       bm('2', 'https://example.com'),
     ];
     expect(findDuplicateGroups(bookmarks)).toEqual([]);
+  });
+
+  describe('findBookmarkByUrl', () => {
+    it('finds an existing bookmark using normalized URL comparison', () => {
+      const bookmarks = [bm('1', 'https://www.example.com/page?utm_source=test')];
+
+      expect(findBookmarkByUrl(bookmarks, 'https://example.com/page#section')?.id).toBe('1');
+    });
+
+    it('returns null when the URL is not already bookmarked', () => {
+      expect(findBookmarkByUrl([bm('1', 'https://example.com')], 'https://github.com')).toBeNull();
+    });
   });
 
   it('groups bookmarks with the same normalized URL', () => {
@@ -64,53 +76,5 @@ describe('findDuplicateGroups', () => {
       bm('2', 'http://localhost:900/page'),
     ];
     expect(findDuplicateGroups(bookmarks)).toEqual([]);
-  });
-});
-
-describe('sigWords', () => {
-  it('returns unique lowercase words of length >= 4', () => {
-    expect(sigWords('Hello World hello')).toEqual(['hello', 'world']);
-  });
-
-  it('splits on spaces, dashes, underscores, slashes, dots, commas', () => {
-    expect(sigWords('hello-world/test.case')).toEqual(['hello', 'world', 'test', 'case']);
-  });
-
-  it('filters out short words', () => {
-    expect(sigWords('a bb ccc dddd')).toEqual(['dddd']);
-  });
-
-  it('returns empty array for empty string', () => {
-    expect(sigWords('')).toEqual([]);
-  });
-});
-
-describe('findSimilar', () => {
-  it('returns bookmarks with the same domain', () => {
-    const target = bm('1', 'https://github.com/user/repo', 'My Repo');
-    const others = [
-      bm('2', 'https://github.com/other', 'Other'),
-      bm('3', 'https://example.com', 'Example'),
-    ];
-    const result = findSimilar(target, [target, ...others]);
-    expect(result.map((b) => b.id)).toContain('2');
-    expect(result.map((b) => b.id)).not.toContain('3');
-  });
-
-  it('does not include the bookmark itself', () => {
-    const target = bm('1', 'https://github.com', 'GitHub');
-    const result = findSimilar(target, [target]);
-    expect(result).toHaveLength(0);
-  });
-
-  it('matches by shared title keywords (>= 2 significant words)', () => {
-    const target = bm('1', 'https://a.com', 'JavaScript Testing Guide');
-    const others = [
-      bm('2', 'https://b.com', 'JavaScript Testing Tutorial'),
-      bm('3', 'https://c.com', 'Python Tutorial'),
-    ];
-    const result = findSimilar(target, [target, ...others]);
-    expect(result.map((b) => b.id)).toContain('2');
-    expect(result.map((b) => b.id)).not.toContain('3');
   });
 });

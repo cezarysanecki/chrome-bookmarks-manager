@@ -1,5 +1,3 @@
-import { STALE_MS } from '../config.js';
-
 /**
  * Parse "Display Title | tag1, tag2" into { title, tags, parseError }.
  * parseError is a human-readable string when the tag section is malformed,
@@ -62,6 +60,8 @@ export function flattenBookmarks(nodes) {
       const { title, tags, parseError } = parseTitle(raw);
       result.push({
         id: node.id,
+        parentId: node.parentId,
+        index: node.index ?? 0,
         rawTitle: raw,
         title,
         url: node.url,
@@ -75,17 +75,18 @@ export function flattenBookmarks(nodes) {
   return result;
 }
 
-/**
- * Returns true if a bookmark is considered stale (unused for STALE_MS).
- *
- * @param {object} bm - bookmark object
- * @param {object} stats - { [id]: { count, lastOpened } }
- * @param {number} pluginInstalledAt - timestamp of plugin installation
- * @param {number} [now] - current timestamp (injectable for testing)
- */
-export function isStale(bm, stats, pluginInstalledAt, now = Date.now()) {
-  const stat = stats[bm.id];
-  const refDate = stat?.lastOpened
-    ?? Math.max(bm.dateAdded || 0, pluginInstalledAt);
-  return now - refDate > STALE_MS;
+/** Flatten bookmark folders into a list suitable for folder pickers. */
+export function flattenFolders(nodes, path = []) {
+  const result = [];
+  for (const node of nodes) {
+    if (!node.url && node.id !== '0') {
+      const title = node.title || 'Bez nazwy';
+      const currentPath = [...path, title];
+      result.push({ id: node.id, title, path: currentPath.join(' / ') });
+      if (node.children) result.push(...flattenFolders(node.children, currentPath));
+    } else if (node.children) {
+      result.push(...flattenFolders(node.children, path));
+    }
+  }
+  return result;
 }

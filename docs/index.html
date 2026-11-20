@@ -3,25 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bookmarks Manager — Chrome Extension</title>
+  <title>Ponad Kodem Bookmarks — Chrome Extension</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Mono:wght@700&display=swap&subset=latin-ext" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --accent: #7c6aff;
-      --accent-light: #a78bfa;
-      --bg: #0f1117;
-      --surface: #13131a;
-      --border: rgba(255,255,255,.08);
-      --text: #c8c8e0;
-      --text-bright: #f0f0f8;
-      --text-muted: #5a5a7a;
+      --accent: #ff5722;
+      --accent-light: #ff8a65;
+      --bg: #14171b;
+      --surface: #22262b;
+      --border: #555c63;
+      --text: #eef1f5;
+      --text-bright: #ffffff;
+      --text-muted: #9aa4b0;
     }
 
     html { scroll-behavior: smooth; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: "Inter", sans-serif;
       background: var(--bg);
       color: var(--text);
       line-height: 1.7;
@@ -33,7 +36,7 @@
     /* ── NAV ── */
     nav {
       position: sticky; top: 0; z-index: 100;
-      background: rgba(15,17,23,.9);
+      background: rgba(20,23,27,.92);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--border);
       padding: 14px 32px;
@@ -41,13 +44,11 @@
     }
     .nav-logo {
       width: 28px; height: 28px;
-      background: var(--accent);
-      border-radius: 8px;
       display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
     }
-    .nav-logo svg { width: 16px; height: 16px; color: #fff; }
-    .nav-name { font-size: 15px; font-weight: 600; color: var(--text-bright); }
+    .nav-logo img { width: 24px; height: 30px; }
+    .nav-name { font-size: 15px; font-weight: 700; color: var(--text-bright); letter-spacing: -.02em; }
     .nav-links { margin-left: auto; display: flex; gap: 24px; }
     .nav-links a { font-size: 13.5px; color: var(--text-muted); }
     .nav-links a:hover { color: var(--text); text-decoration: none; }
@@ -64,19 +65,20 @@
       content: '';
       position: absolute;
       width: 500px; height: 500px;
-      background: radial-gradient(circle, rgba(124,106,255,.12) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(255,87,34,.22) 0%, transparent 70%);
       top: 0; left: 50%; transform: translateX(-50%);
       pointer-events: none;
     }
     .hero-badge {
       display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(124,106,255,.12);
-      border: 1px solid rgba(124,106,255,.25);
+      background: rgba(255,87,34,.12);
+      border: 1px solid rgba(255,87,34,.25);
       color: var(--accent-light);
       font-size: 12px; font-weight: 600;
       padding: 5px 12px; border-radius: 20px;
       margin-bottom: 24px;
       text-transform: uppercase; letter-spacing: .5px;
+      font-family: "Space Mono", monospace;
     }
     .hero h1 {
       font-size: clamp(36px, 5vw, 56px);
@@ -96,7 +98,7 @@
     .hero-cta {
       display: inline-flex; align-items: center; gap: 10px;
       background: var(--accent);
-      color: #fff;
+      color: var(--bg);
       font-size: 15px; font-weight: 600;
       padding: 13px 28px; border-radius: 10px;
       transition: opacity .15s;
@@ -158,7 +160,7 @@
     }
     .feature-icon {
       width: 38px; height: 38px;
-      background: rgba(124,106,255,.15);
+      background: rgba(255,87,34,.15);
       border-radius: 10px;
       display: flex; align-items: center; justify-content: center;
       margin-bottom: 14px;
@@ -192,8 +194,8 @@
     kbd {
       background: rgba(255,255,255,.08);
       border: 1px solid rgba(255,255,255,.14);
-      color: #c0c0d8;
-      font-family: monospace;
+      color: var(--text);
+      font-family: "Space Mono", monospace;
       font-size: 11.5px;
       padding: 3px 8px;
       border-radius: 5px;
@@ -209,11 +211,11 @@
     .privacy h2 { font-size: 24px; font-weight: 700; color: var(--text-bright); margin-bottom: 6px; }
     .privacy .sub { font-size: 14px; color: var(--text-muted); margin-bottom: 32px; }
     .privacy-highlight {
-      background: rgba(124,106,255,.08);
-      border: 1px solid rgba(124,106,255,.2);
+      background: rgba(255,87,34,.08);
+      border: 1px solid rgba(255,87,34,.2);
       border-radius: 10px;
       padding: 16px 20px;
-      color: #c0b8ff;
+      color: var(--text);
       font-size: 14px;
       margin-bottom: 28px;
     }
@@ -231,9 +233,9 @@
 
     table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 12px 0 20px; }
     th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,.06); }
-    th { background: rgba(255,255,255,.04); color: #a0a0b8; font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; }
-    td { color: #b8b8d0; }
-    td:first-child { color: var(--text-bright); white-space: nowrap; font-family: monospace; font-size: 12.5px; }
+    th { background: rgba(255,255,255,.04); color: var(--text-muted); font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .4px; }
+    td { color: var(--text); }
+    td:first-child { color: var(--text-bright); white-space: nowrap; font-family: "Space Mono", monospace; font-size: 12.5px; }
 
     /* ── FOOTER ── */
     footer {
@@ -256,12 +258,9 @@
 
 <nav>
   <div class="nav-logo">
-    <svg viewBox="0 0 20 20" fill="none">
-      <path d="M5 3h10a1 1 0 0 1 1 1v13l-6-3-6 3V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-      <path d="M8 8h4M10 6v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
-    </svg>
+    <img src="logo.svg" alt="">
   </div>
-  <span class="nav-name">Bookmarks Manager</span>
+  <span class="nav-name">Ponad Kodem Bookmarks</span>
   <div class="nav-links">
     <a href="#features">Features</a>
     <a href="#privacy">Privacy</a>
@@ -276,7 +275,7 @@
     Chrome Extension · MV3
   </div>
   <h1>Your bookmarks,<br><span>under control</span></h1>
-  <p>Search, tag, and manage your Chrome bookmarks in seconds — with duplicate detection, stale-link alerts, and optional AI tag suggestions. No account, no cloud, no ads.</p>
+  <p>Search and open bookmarks from a focused popup, then organize your Inbox, tags, folders, and backups in the full-page view. No account, no cloud, no ads.</p>
   <a class="hero-cta" href="https://chrome.google.com/webstore" target="_blank" rel="noopener">
     <svg viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.4"/><path d="M10 6v4l2.5 2.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
     Add to Chrome
@@ -287,11 +286,11 @@
 <div class="screenshots">
   <div class="screenshot-card">
     <img src="screenshot-popup.png" alt="Popup view — search and bookmark list">
-    <div class="caption">Quick popup — search, filter by tag, open-count badges</div>
+    <div class="caption">Quick popup — duplicate prevention and fast tag suggestions</div>
   </div>
   <div class="screenshot-card">
-    <img src="screenshot-fullpage.png" alt="Full-page view — grid layout with tag sidebar">
-    <div class="caption">Full-page view — grid layout, tag sidebar, grouped sections</div>
+    <img src="screenshot-fullpage.png" alt="Full-page view with tag sidebar">
+    <div class="caption">Full-page view — Inbox, bulk actions, keyboard navigation, and history</div>
   </div>
 </div>
 
@@ -314,15 +313,7 @@
         <svg viewBox="0 0 20 20" fill="none"><path d="M3 6h14M7 10h10M11 14h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       </div>
       <h3>Tags stored in the bookmark</h3>
-      <p>Tags live inside the bookmark title (<code style="font-size:12px;color:#a78bfa">Title | tag1, tag2</code>), so they sync across all your devices via your Google account automatically.</p>
-    </div>
-
-    <div class="feature-card">
-      <div class="feature-icon">
-        <svg viewBox="0 0 20 20" fill="none"><path d="M10 5v5l3 3M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-      </div>
-      <h3>Stale bookmark alerts</h3>
-      <p>Bookmarks you haven't opened in 30+ days are flagged. Review and clean up with one click.</p>
+      <p>Tags live inside the bookmark title (<code style="font-size:12px;color:#ff8a65">Title | tag1, tag2</code>), so they sync across all your devices via your Google account automatically.</p>
     </div>
 
     <div class="feature-card">
@@ -335,14 +326,6 @@
 
     <div class="feature-card">
       <div class="feature-icon">
-        <svg viewBox="0 0 20 20" fill="none"><path d="M5 10h10M10 5l5 5-5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>
-      <h3>Open-count popularity sort</h3>
-      <p>Every click is counted. Sort by most-opened to surface your most-used bookmarks at the top.</p>
-    </div>
-
-    <div class="feature-card">
-      <div class="feature-icon">
         <svg viewBox="0 0 20 20" fill="none"><path d="M4 15V5a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v10M8 19h4M10 15v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       </div>
       <h3>CSV export &amp; import</h3>
@@ -351,18 +334,34 @@
 
     <div class="feature-card">
       <div class="feature-icon">
-        <svg viewBox="0 0 20 20" fill="none"><path d="M10 7v4M10 13h.01" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.4"/></svg>
+        <svg viewBox="0 0 20 20" fill="none"><path d="M4 5h12v10H4zM4 8h12" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
       </div>
-      <h3>Dead link checker <span style="font-size:11px;color:#5a5a7a;font-weight:400">(optional)</span></h3>
-      <p>Sends HTTP HEAD requests to verify bookmarks are still reachable. Flags potentially broken links without loading any page content.</p>
+      <h3>Inbox for untagged bookmarks</h3>
+      <p>Review every bookmark without a tag in one place, then organize it when you have time.</p>
     </div>
 
     <div class="feature-card">
       <div class="feature-icon">
-        <svg viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9 5.4.8-3.9 3.8.9 5.3L10 14.3l-4.8 2.5.9-5.3L2.2 7.7l5.4-.8L10 2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        <svg viewBox="0 0 20 20" fill="none"><path d="M4 5h12M4 10h12M4 15h12M2 5h.01M2 10h.01M2 15h.01" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
       </div>
-      <h3>AI tag suggestions <span style="font-size:11px;color:#5a5a7a;font-weight:400">(optional)</span></h3>
-      <p>Bring your own OpenAI API key and get instant tag suggestions from GPT-4o mini. Disabled by default; the bookmark title and URL are sent only when you request suggestions.</p>
+      <h3>Bulk actions</h3>
+      <p>Select multiple bookmarks to add tags, move them to a Chrome folder, or delete them with history-based undo.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg viewBox="0 0 20 20" fill="none"><path d="M5 10h10M11 6l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <h3>Safe bookmark creation</h3>
+      <p>Normalized URLs prevent accidental duplicates. Add new tags to the existing bookmark instead.</p>
+    </div>
+
+    <div class="feature-card">
+      <div class="feature-icon">
+        <svg viewBox="0 0 20 20" fill="none"><rect x="3" y="5" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M6 9h2M10 9h1M13 9h1M6 12h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </div>
+      <h3>Keyboard-first management</h3>
+      <p>Navigate with J/K, open with Enter, select with X, and edit, tag, copy, or delete without reaching for the mouse.</p>
     </div>
 
   </div>
@@ -374,11 +373,11 @@
   <div class="section-title" style="font-size:24px">Work faster without the mouse</div>
   <div class="shortcuts-grid">
     <div class="shortcut-row">
-      <div class="kbd-group"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>B</kbd></div>
+      <div class="kbd-group"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>B</kbd></div>
       <span>Open bookmark popup</span>
     </div>
     <div class="shortcut-row">
-      <div class="kbd-group"><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>D</kbd></div>
+      <div class="kbd-group"><kbd>Alt</kbd><kbd>Shift</kbd><kbd>D</kbd></div>
       <span>Save current tab as bookmark</span>
     </div>
     <div class="shortcut-row">
@@ -389,31 +388,37 @@
       <div class="kbd-group"><kbd>Enter</kbd></div>
       <span>Open highlighted bookmark</span>
     </div>
+    <div class="shortcut-row">
+      <div class="kbd-group"><kbd>J</kbd><kbd>K</kbd></div>
+      <span>Navigate in the full-page view</span>
+    </div>
+    <div class="shortcut-row">
+      <div class="kbd-group"><kbd>X</kbd></div>
+      <span>Select for bulk actions</span>
+    </div>
   </div>
 </section>
 
 <!-- PRIVACY -->
 <section class="privacy" id="privacy">
   <h2>Privacy Policy</h2>
-  <p class="sub">Last updated: August 2026 · Applies to version 1.0.0 and later</p>
+  <p class="sub">Last updated: November 2026 · Applies to version 1.0.0 and later</p>
 
   <div class="privacy-highlight">
-    <strong>Summary:</strong> Bookmarks Manager stores settings, history, and statistics locally
-    using <code>chrome.storage.local</code>. Optional features can contact bookmarked sites to
-    check link availability, Google to retrieve favicons, or OpenAI to generate tag suggestions.
-    The extension developer does not receive this data.
+    <strong>Summary:</strong> Ponad Kodem Bookmarks stores settings, recent tags, and change history locally
+    using <code>chrome.storage.local</code>. When favicons are enabled, bookmark domains are sent
+    to Google's favicon service. The extension developer does not receive this data.
   </div>
 
   <h3>What data we store</h3>
-  <p>Settings, history, and statistics are stored exclusively in your browser's local storage. Optional network features are described below.</p>
+  <p>Settings, recent tags, and change history are stored exclusively in your browser's local storage.</p>
   <table>
     <thead><tr><th>Key</th><th>Contents</th><th>Purpose</th></tr></thead>
     <tbody>
-      <tr><td>bm_settings</td><td>Feature flags, optional OpenAI API key</td><td>Persist user preferences</td></tr>
-      <tr><td>bm_stats</td><td>Open count and last-opened timestamp per bookmark ID</td><td>Popularity sort, stale detection</td></tr>
-      <tr><td>bm_history</td><td>Last 30 add/edit/delete operations</td><td>Undo support</td></tr>
-      <tr><td>bm_view_prefs</td><td>Grid mode, group mode, sort order</td><td>Restore view between sessions</td></tr>
-      <tr><td>bm_installed_at</td><td>First-install timestamp</td><td>Baseline for stale detection</td></tr>
+      <tr><td>bm_settings</td><td>Favicon display preference</td><td>Persist user preferences</td></tr>
+      <tr><td>bm_history</td><td>Last 30 edit, tag, move, and delete operations</td><td>Undo support</td></tr>
+      <tr><td>bm_recent_tags</td><td>Last 8 tags used while adding bookmarks</td><td>Show local tag suggestions</td></tr>
+      <tr><td>bm_view_prefs</td><td>Group mode and sort order</td><td>Restore view between sessions</td></tr>
       <tr><td>bm_pending_add</td><td>Title + URL of bookmark being added</td><td>Pass data from background to popup (cleared immediately)</td></tr>
     </tbody>
   </table>
@@ -422,34 +427,21 @@
   <table>
     <thead><tr><th>Permission</th><th>Why it's needed</th></tr></thead>
     <tbody>
-      <tr><td>bookmarks</td><td>Read, create, edit, and delete Chrome bookmarks</td></tr>
-      <tr><td>storage</td><td>Save preferences and statistics locally</td></tr>
-      <tr><td>tabs</td><td>Read the active tab URL/title when saving via Ctrl+Shift+D</td></tr>
-      <tr><td>&lt;all_urls&gt;</td><td>Send HTTP HEAD requests for dead-link checking (optional, user-triggered). Only the HTTP status code is read — no page content.</td></tr>
+      <tr><td>bookmarks</td><td>Read, create, edit, move, and delete Chrome bookmarks</td></tr>
+      <tr><td>storage</td><td>Save preferences, recent tags, and change history locally</td></tr>
+      <tr><td>tabs</td><td>Read the active tab URL/title when saving via Alt+Shift+D</td></tr>
+      <tr><td>https://www.google.com/*</td><td>Retrieve favicons when favicon display is enabled</td></tr>
     </tbody>
   </table>
 
-  <h3>Optional network features</h3>
-  <p>
-    Dead-link checking sends HTTP HEAD requests to bookmarked sites and inspects only response
-    status codes. Favicon display sends bookmark domains to Google's favicon service. These
-    features are disabled by default.
-  </p>
-
-  <h3>Optional AI feature</h3>
-  <p>
-    The AI tag suggestion feature is <strong>disabled by default</strong> and requires you to
-    explicitly enable it and provide your own OpenAI API key. When active, only the bookmark's
-    title and URL are sent to <code>api.openai.com</code>. Your API key is stored locally and
-    never transmitted to anyone other than OpenAI.
-    <a href="https://openai.com/policies/privacy-policy" target="_blank" rel="noopener">OpenAI's privacy policy</a> applies to that interaction.
-  </p>
+  <h3>Optional network feature</h3>
+  <p>Favicon display sends bookmark domains to Google's favicon service. It is disabled by default.</p>
 
   <h3>Data sharing</h3>
-  <p>We do not collect, sell, or rent any data. Data is sent to bookmarked sites, Google, or OpenAI only when the corresponding optional feature is used. No analytics, crash reporting, or telemetry of any kind.</p>
+  <p>We do not collect, sell, or rent any data. Bookmark domains are sent to Google only when favicon display is enabled. No analytics, crash reporting, or telemetry of any kind.</p>
 
   <h3>Data deletion</h3>
-  <p>Go to <strong>chrome://extensions</strong>, find Bookmarks Manager and click <em>Remove</em> to delete all stored data. You can also clear individual storage keys from the extension's Settings panel.</p>
+  <p>Go to <strong>chrome://extensions</strong>, find Ponad Kodem Bookmarks and click <em>Remove</em> to delete all stored data.</p>
 
   <h3>Contact</h3>
   <p>Questions? Open an issue on <a href="https://github.com/cezarysanecki/chrome-bookmarks-manager" target="_blank" rel="noopener">GitHub</a>.</p>
@@ -457,7 +449,7 @@
 
 <footer>
   <p>
-    &copy; 2026 Bookmarks Manager &nbsp;·&nbsp;
+    &copy; 2026 Ponad Kodem Bookmarks &nbsp;·&nbsp;
     <a href="https://github.com/cezarysanecki/chrome-bookmarks-manager" target="_blank" rel="noopener">GitHub</a>
   </p>
 </footer>

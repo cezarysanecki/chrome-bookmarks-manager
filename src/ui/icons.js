@@ -29,17 +29,3 @@ export const svgLabel = () =>
     <path d="M3 10L10 3h7v7l-7 7-7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
     <circle cx="13.5" cy="6.5" r="1" fill="currentColor"/>
   </svg>`;
-
-export const svgSimilar = () =>
-  `<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="5" cy="10" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <circle cx="15" cy="5" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <circle cx="15" cy="15" r="2.5" stroke="currentColor" stroke-width="1.4"/>
-    <path d="M7.5 10h2M9.5 10l3-4M9.5 10l3 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-  </svg>`;
-
-export const svgAI = () =>
-  `<svg viewBox="0 0 20 20" fill="none">
-    <path d="M10 2l1.5 4.5L16 8l-4.5 1.5L10 15l-1.5-4.5L4 8l4.5-1.5L10 2z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
-    <path d="M16 2l.8 2L19 5l-2.2.8L16 8l-.8-2.2L13 5l2.2-.8L16 2z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>
-  </svg>`;

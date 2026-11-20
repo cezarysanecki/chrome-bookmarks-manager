@@ -30,7 +30,7 @@ if (type === 'url') {
   card.appendChild(el('p', 'label', 'Problematyczny adres'));
   card.appendChild(el('div', 'value-box value-box--url', escapeHtml(value)));
   card.appendChild(el('p', 'hint',
-    'Otwórz <strong>Bookmarks Manager</strong>, znajdź tę zakładkę i popraw jej adres URL.'
+    'Otwórz <strong>Ponad Kodem — Zakładki</strong>, znajdź tę zakładkę i popraw jej adres URL.'
   ));
 } else {
   card.appendChild(el('div', 'icon icon--tags',

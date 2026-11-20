@@ -1,22 +1,23 @@
 {
   "manifest_version": 3,
-  "name": "Bookmarks Manager",
+  "name": "Ponad Kodem — Zakładki",
   "version": "1.0.1",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApavTj8w1zvqjMIzMFT4rkjWmYZX2ptMd11ZxpQm/JUaXbi4BbxmM339TLHqKTIKNRDg7/u9kYI0Yt9+gtinxvUL56bgfgwKF8u0OydXDoPxRXsoLHAVG8vRhkk/xbt1MVzjm5O8ENSK74/PWNFE084wP6hgayyGXIXiyRnl15dRJpFHk/jdyth54iNfuzHnxdYCtJVMRKnQJsrwP9yYaaBk3BMUXfKlcJbtFZrEAARFu/WFOLVD/iOPMYAE1MpBBhJQ2lOS5BFuw0QqbCH8riF4cUdxuowSGjN86vNBKSbAtNZMxPM4/qfoP/cZMD2i09kmpU2ggEtexChFR8jJC3wIDAQAB",
   "description": "Przeglądaj i wyszukuj zakładki Chrome z podglądem tytułu i URL.",
   "permissions": ["bookmarks", "tabs", "storage"],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": ["https://www.google.com/*"],
   "commands": {
     "_execute_action": {
       "suggested_key": {
-        "default": "Ctrl+Shift+B",
-        "mac": "MacCtrl+Shift+B"
+        "default": "Alt+Shift+B",
+        "mac": "Alt+Shift+B"
       },
-      "description": "Otwórz Bookmarks Manager"
+      "description": "Otwórz zakładki Ponad Kodem"
     },
     "add-bookmark": {
       "suggested_key": {
-        "default": "Ctrl+Shift+D",
-        "mac": "MacCtrl+Shift+D"
+        "default": "Alt+Shift+D",
+        "mac": "Alt+Shift+D"
       },
       "description": "Dodaj zakładkę do bieżącej strony"
     }

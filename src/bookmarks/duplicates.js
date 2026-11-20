@@ -1,4 +1,4 @@
-import { normalizeUrl, urlHostname } from '../lib/url.js';
+import { normalizeUrl } from '../lib/url.js';
 
 /** Return groups of bookmarks sharing the same normalised URL. */
 export function findDuplicateGroups(bookmarks) {
@@ -11,20 +11,8 @@ export function findDuplicateGroups(bookmarks) {
   return [...groups.values()].filter((g) => g.length > 1);
 }
 
-/** Return bookmarks similar to `bm` by shared domain or title keywords. */
-export function findSimilar(bm, bookmarks) {
-  const host  = urlHostname(bm.url);
-  const words = sigWords(bm.title);
-  return bookmarks.filter((other) => {
-    if (other.id === bm.id) return false;
-    if (host && urlHostname(other.url) === host) return true;
-    return sigWords(other.title).filter((w) => words.includes(w)).length >= 2;
-  });
-}
-
-/** Extract significant (length >= 4) unique lowercased words from a title. */
-export function sigWords(title) {
-  return [...new Set(
-    title.toLowerCase().split(/[\s\-_/.,]+/).filter((w) => w.length >= 4)
-  )];
+/** Find an existing bookmark with the same normalized URL. */
+export function findBookmarkByUrl(bookmarks, url) {
+  const normalized = normalizeUrl(url);
+  return bookmarks.find((bookmark) => normalizeUrl(bookmark.url) === normalized) ?? null;
 }

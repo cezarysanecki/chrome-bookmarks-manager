@@ -1,27 +1,23 @@
 import { STORAGE_KEYS, HISTORY_MAX, DEBOUNCE_MS } from './src/config.js';
 import { normalizeUrl, urlHostname, isAllowedProtocol } from './src/lib/url.js';
-import { escapeHtml, escapeRegex, highlight } from './src/lib/dom.js';
+import { escapeHtml, highlight } from './src/lib/dom.js';
 import { csvRow, parseCsv, dateStamp } from './src/lib/csv.js';
-import { BookmarkStats } from './src/bookmarks/stats.js';
-import { parseTitle, buildRawTitle, flattenBookmarks, isStale } from './src/bookmarks/parse.js';
-import { findDuplicateGroups, findSimilar, sigWords } from './src/bookmarks/duplicates.js';
-import { svgEdit, svgTrash, svgCopy, svgCheck, svgWarn, svgLabel, svgSimilar, svgAI } from './src/ui/icons.js';
+import { buildRawTitle, flattenBookmarks, flattenFolders } from './src/bookmarks/parse.js';
+import { findBookmarkByUrl, findDuplicateGroups } from './src/bookmarks/duplicates.js';
+import { mergeTags } from './src/bookmarks/tags.js';
+import { svgEdit, svgTrash, svgCopy, svgCheck, svgWarn, svgLabel } from './src/ui/icons.js';
 import { bookmarksApi } from './src/bookmarks/api.js';
 
 let allBookmarks = [];   // [{ id, rawTitle, title, url, tags[], parseError }]
 let currentQuery    = '';
 let activeTag       = null;
 let groupMode       = false;
-let gridMode        = false;
-let activeSimilarTo = null;
-let currentSort     = 'popular';
-let bookmarkStats   = {};  // { [id]: { count, lastOpened } }
-let pluginInstalledAt = Date.now();
-let staleMode       = false;
+let currentSort     = 'default';
 let duplicatesMode  = false;
-let settings        = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '' };
-let deadLinks       = new Set();   // URLs confirmed unreachable
-let checkRunning    = false;
+let settings        = { favicons: false };
+let folders         = [];
+let selectedIds     = new Set();
+let keyboardBookmarkId = null;
 
 // --- DOM ---
 const searchEl       = document.getElementById('search');
@@ -40,14 +36,24 @@ const modalCancel    = document.getElementById('modal-cancel');
 const modalConfirm   = document.getElementById('modal-confirm');
 const toastEl        = document.getElementById('toast');
 const importFileEl   = document.getElementById('import-file');
+const bulkSelectAllEl = document.getElementById('bulk-select-all');
+const bulkCountEl     = document.getElementById('bulk-count');
+const bulkActionsEl   = document.getElementById('bulk-actions');
+const bulkTagEl       = document.getElementById('bulk-tag');
+const bulkFolderEl    = document.getElementById('bulk-folder');
 
 // --- History (chrome.storage.local) ---
 
 function historyPush(entry) {
+  historyPushMany([entry]);
+}
+
+function historyPushMany(entries) {
   if (!chrome.storage?.local) return;
   chrome.storage.local.get(STORAGE_KEYS.HISTORY, (data) => {
     const list = data[STORAGE_KEYS.HISTORY] || [];
-    list.unshift({ ...entry, ts: Date.now() });
+    const now = Date.now();
+    list.unshift(...entries.map((entry, index) => ({ ...entry, ts: entry.ts ?? now + index })));
     if (list.length > HISTORY_MAX) list.length = HISTORY_MAX;
     chrome.storage.local.set({ [STORAGE_KEYS.HISTORY]: list }, renderHistory);
   });
@@ -64,9 +70,14 @@ function historyRemoveByTs(ts) {
 async function undoHistoryEntry(entry, onDone) {
   try {
     if (entry.type === 'delete') {
-      await bookmarksApi.create({ title: entry.rawTitle, url: entry.url });
+      const details = { title: entry.rawTitle, url: entry.url };
+      if (entry.parentId) details.parentId = entry.parentId;
+      if (Number.isInteger(entry.index)) details.index = entry.index;
+      await bookmarksApi.create(details);
     } else if (entry.type === 'edit' || entry.type === 'tag_add' || entry.type === 'tag_remove') {
       await bookmarksApi.update(entry.id, { title: entry.rawTitleBefore, url: entry.urlBefore ?? entry.url });
+    } else if (entry.type === 'move') {
+      await bookmarksApi.move(entry.id, { parentId: entry.parentIdBefore, index: entry.indexBefore });
     }
     historyRemoveByTs(entry.ts);
     onDone?.();
@@ -82,6 +93,7 @@ function historyLabel(entry) {
     case 'edit':       return `Edytowano: ${t}`;
     case 'tag_add':    return `+etykieta „${entry.tag}" → ${t}`;
     case 'tag_remove': return `-etykieta „${entry.tag}" z ${t}`;
+    case 'move':       return `Przeniesiono: ${t}`;
     default:           return entry.type;
   }
 }
@@ -118,6 +130,8 @@ function renderHistory() {
           try {
             const tree = await bookmarksApi.getTree();
             allBookmarks = flattenBookmarks(tree);
+            folders = flattenFolders(tree);
+            renderFolderOptions();
             renderSidebar();
             renderAll();
             showToast('Cofnięto', 'ok');
@@ -140,43 +154,34 @@ function saveSettings() {
 
 // --- Init ---
 function applySettings(s) {
-  settings = { favicons: false, deadLinkCheck: false, aiEnabled: false, openaiKey: '', ...s };
-  document.getElementById('setting-favicons').checked    = settings.favicons;
-  document.getElementById('setting-dead-links').checked  = settings.deadLinkCheck;
-  document.getElementById('setting-ai-enabled').checked  = settings.aiEnabled;
-  document.getElementById('setting-openai-key').value    = settings.openaiKey;
+  settings = { favicons: false, ...s };
+  document.getElementById('setting-favicons').checked = settings.favicons;
 }
 
 async function initBookmarks() {
   try {
     const tree = await bookmarksApi.getTree();
     allBookmarks = flattenBookmarks(tree);
+    folders = flattenFolders(tree);
+    selectedIds = new Set([...selectedIds].filter((id) => allBookmarks.some((bookmark) => bookmark.id === id)));
+    renderFolderOptions();
     renderSidebar();
     renderAll();
     renderHistory();
-    if (settings.deadLinkCheck) checkDeadLinks();
   } catch (err) {
     showToast(`Błąd ładowania zakładek: ${err.message}`, 'err');
   }
 }
 
 if (chrome.storage?.local) {
-  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.STATS, STORAGE_KEYS.INSTALLED_AT, STORAGE_KEYS.VIEW_PREFS], (data) => {
+  chrome.storage.local.get([STORAGE_KEYS.SETTINGS, STORAGE_KEYS.VIEW_PREFS], (data) => {
     applySettings(data[STORAGE_KEYS.SETTINGS] || {});
-    bookmarkStats = data[STORAGE_KEYS.STATS] || {};
     const prefs = data[STORAGE_KEYS.VIEW_PREFS] || {};
-    if (prefs.gridMode)  { gridMode  = true; document.getElementById('btn-grid').classList.add('toggle-btn--active'); }
     if (prefs.groupMode) { groupMode = true; btnGroup.classList.add('toggle-btn--active'); }
-    if (prefs.sort) {
+    if (['default', 'az', 'za', 'domain'].includes(prefs.sort)) {
       currentSort = prefs.sort;
       const sortEl = document.getElementById('sort-select');
       if (sortEl) sortEl.value = prefs.sort;
-    }
-    if (data[STORAGE_KEYS.INSTALLED_AT]) {
-      pluginInstalledAt = data[STORAGE_KEYS.INSTALLED_AT];
-    } else {
-      pluginInstalledAt = Date.now();
-      chrome.storage.local.set({ [STORAGE_KEYS.INSTALLED_AT]: pluginInstalledAt });
     }
     initBookmarks();
   });
@@ -196,6 +201,40 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape' && inInput && document.activeElement === searchEl) {
     searchEl.blur();
+  }
+  if (inInput || tag === 'SELECT' || !modalOverlay.hidden || !settingsOverlay.hidden) return;
+
+  const rows = getNavigableRows();
+  if (['j', 'J', 'ArrowDown'].includes(e.key)) {
+    e.preventDefault();
+    moveKeyboardFocus(1, rows);
+  } else if (['k', 'K', 'ArrowUp'].includes(e.key)) {
+    e.preventDefault();
+    moveKeyboardFocus(-1, rows);
+  } else if (e.key === 'Enter') {
+    const bookmark = getKeyboardBookmark();
+    if (bookmark) { e.preventDefault(); openBookmark(bookmark); }
+  } else if (['x', 'X', ' '].includes(e.key)) {
+    const bookmark = getKeyboardBookmark();
+    if (bookmark) { e.preventDefault(); toggleSelection(bookmark.id); }
+  } else if (['e', 'E'].includes(e.key)) {
+    const row = getKeyboardRow();
+    const bookmark = getKeyboardBookmark();
+    if (row && bookmark) { e.preventDefault(); startEdit(bookmark, row); }
+  } else if (['t', 'T'].includes(e.key)) {
+    const row = getKeyboardRow();
+    const bookmark = getKeyboardBookmark();
+    const button = row?.querySelector('.bm-action[title="Etykiety"]');
+    if (row && bookmark && button) { e.preventDefault(); toggleTagEditor(bookmark, row, button); }
+  } else if (['y', 'Y'].includes(e.key)) {
+    const row = getKeyboardRow();
+    const bookmark = getKeyboardBookmark();
+    const button = row?.querySelector('.bm-copy');
+    if (bookmark && button) { e.preventDefault(); copyLink(bookmark.url, button); }
+  } else if (e.key === 'Delete') {
+    const row = getKeyboardRow();
+    const bookmark = getKeyboardBookmark();
+    if (row && bookmark) { e.preventDefault(); confirmDelete(bookmark.id, row); }
   }
 });
 
@@ -217,15 +256,14 @@ clearSearchEl.addEventListener('click', () => {
   renderAll();
 });
 
-// --- Tag / similar filter clear ---
+// --- Tag filter clear ---
 filterClearEl.addEventListener('click', () => {
-  activeSimilarTo = null;
   setTagFilter(null);
 });
 
 function saveViewPrefs() {
   if (chrome.storage?.local) {
-    chrome.storage.local.set({ [STORAGE_KEYS.VIEW_PREFS]: { gridMode, groupMode, sort: currentSort } });
+    chrome.storage.local.set({ [STORAGE_KEYS.VIEW_PREFS]: { groupMode, sort: currentSort } });
   }
 }
 
@@ -233,14 +271,6 @@ function saveViewPrefs() {
 btnGroup.addEventListener('click', () => {
   groupMode = !groupMode;
   btnGroup.classList.toggle('toggle-btn--active', groupMode);
-  saveViewPrefs();
-  renderAll();
-});
-
-// --- Grid toggle ---
-document.getElementById('btn-grid').addEventListener('click', () => {
-  gridMode = !gridMode;
-  document.getElementById('btn-grid').classList.toggle('toggle-btn--active', gridMode);
   saveViewPrefs();
   renderAll();
 });
@@ -264,203 +294,6 @@ document.getElementById('setting-favicons').addEventListener('change', (e) => {
   renderAll();
 });
 
-document.getElementById('setting-ai-enabled').addEventListener('change', (e) => {
-  settings.aiEnabled = e.target.checked;
-  saveSettings();
-  renderAll();
-});
-
-document.getElementById('setting-dead-links').addEventListener('change', (e) => {
-  settings.deadLinkCheck = e.target.checked;
-  saveSettings();
-});
-
-document.getElementById('btn-check-now').addEventListener('click', () => {
-  settingsOverlay.hidden = true;
-  checkDeadLinks();
-});
-
-// --- OpenAI key ---
-const openaiKeyInput = document.getElementById('setting-openai-key');
-openaiKeyInput.addEventListener('change', () => {
-  settings.openaiKey = openaiKeyInput.value.trim();
-  saveSettings();
-});
-
-document.getElementById('btn-show-key').addEventListener('click', () => {
-  openaiKeyInput.type = openaiKeyInput.type === 'password' ? 'text' : 'password';
-});
-
-// --- AI tag suggestions ---
-
-async function suggestTagsAI(bm) {
-  if (!settings.openaiKey) {
-    showToast('Ustaw klucz OpenAI w Ustawieniach', 'warn');
-    return null;
-  }
-  const prompt =
-    `Zaproponuj 2-5 krótkich etykiet (1-2 słowa każda) dla tej zakładki.\n` +
-    `Tytuł: ${bm.title}\nURL: ${bm.url}\n` +
-    (bm.tags.length ? `Istniejące etykiety: ${bm.tags.join(', ')}\n` : '') +
-    `Odpowiedź: tylko lista etykiet rozdzielona przecinkami, bez dodatkowego tekstu.`;
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${settings.openaiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 60,
-      temperature: 0.3,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `HTTP ${res.status}`);
-  }
-
-  const data = await res.json();
-  return data.choices[0].message.content
-    .trim()
-    .split(',')
-    .map((t) => t.trim().replace(/^["']|["']$/g, ''))
-    .filter((t) => t && !bm.tags.includes(t));
-}
-
-function showAISuggestPanel(bm, container, onTagAdded) {
-  container.querySelector('.ai-suggest-panel')?.remove();
-
-  const panel = document.createElement('div');
-  panel.className = 'ai-suggest-panel';
-
-  const label = document.createElement('span');
-  label.className = 'ai-suggest-label';
-  label.textContent = 'AI:';
-  panel.appendChild(label);
-
-  const chipsWrap = document.createElement('div');
-  chipsWrap.className = 'ai-suggest-chips';
-
-  function addChip(tag) {
-    const chip = document.createElement('button');
-    chip.className = 'ai-chip';
-    chip.textContent = `+ ${tag}`;
-    chip.title = `Dodaj etykietę „${tag}"`;
-    chip.addEventListener('click', () => {
-      if (bm.tags.includes(tag)) { chip.remove(); return; }
-      const rawTitleBefore = bm.rawTitle;
-      bm.tags = [...bm.tags, tag];
-      bm.rawTitle = buildRawTitle(bm.title, bm.tags);
-      bookmarksApi.update(bm.id, { title: bm.rawTitle }).catch((err) => showToast(`Błąd: ${err.message}`, 'err'));
-      historyPush({ type: 'tag_add', id: bm.id, title: bm.title, tag, rawTitleBefore, url: bm.url, ts: Date.now() });
-      chip.remove();
-      onTagAdded(bm);
-      if (!chipsWrap.children.length) panel.remove();
-    });
-    chipsWrap.appendChild(chip);
-  }
-
-  panel.appendChild(chipsWrap);
-
-  const dismiss = document.createElement('button');
-  dismiss.className = 'ai-suggest-dismiss';
-  dismiss.textContent = '✕';
-  dismiss.title = 'Odrzuć sugestie';
-  dismiss.addEventListener('click', () => panel.remove());
-  panel.appendChild(dismiss);
-
-  container.appendChild(panel);
-  return { chipsWrap, addChip };
-}
-
-async function runAISuggest(bm, container, aiBtn, onTagAdded) {
-  aiBtn.disabled = true;
-  aiBtn.classList.add('bm-action--loading');
-  try {
-    const tags = await suggestTagsAI(bm);
-    if (!tags || tags.length === 0) {
-      showToast('Brak nowych sugestii', 'warn');
-      return;
-    }
-    const { addChip } = showAISuggestPanel(bm, container, onTagAdded);
-    tags.forEach(addChip);
-  } catch (err) {
-    showToast(`Błąd AI: ${err.message}`, 'err');
-  } finally {
-    aiBtn.disabled = false;
-    aiBtn.classList.remove('bm-action--loading');
-  }
-}
-
-// --- Dead link checking ---
-
-async function checkDeadLinks() {
-  if (checkRunning) return;
-  checkRunning = true;
-  deadLinks.clear();
-
-  const urls = [...new Set(allBookmarks.map((b) => b.url).filter((u) => u.startsWith('http')))];
-  const total = urls.length;
-  let done = 0;
-
-  updateCheckStatus(`Sprawdzanie 0/${total}…`);
-
-  const CONCURRENCY = 5;
-  let idx = 0;
-
-  async function worker() {
-    while (idx < urls.length) {
-      const url = urls[idx++];
-      const alive = await checkUrl(url);
-      if (!alive) deadLinks.add(url);
-      done++;
-      updateCheckStatus(`Sprawdzanie ${done}/${total}…`);
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(CONCURRENCY, urls.length) }, worker);
-  await Promise.all(workers);
-
-  checkRunning = false;
-  const count = deadLinks.size;
-  if (count === 0) {
-    updateCheckStatus('Wszystkie linki działają', 6000);
-  } else {
-    updateCheckStatus(`Martwe linki: ${count}`, 0);
-  }
-  renderAll();
-}
-
-async function checkUrl(url) {
-  const controller = new AbortController();
-  const tid = setTimeout(() => controller.abort(), 6000);
-  try {
-    const res = await fetch(url, { method: 'HEAD', signal: controller.signal });
-    clearTimeout(tid);
-    if (res.status === 405) return true; // HEAD blocked but server responded
-    return res.status < 400;
-  } catch {
-    clearTimeout(tid);
-    return false;
-  }
-}
-
-const deadCheckStatusEl = document.getElementById('dead-check-status');
-let deadStatusTimer;
-
-function updateCheckStatus(msg, autohideMs = null) {
-  deadCheckStatusEl.textContent = msg;
-  deadCheckStatusEl.hidden = false;
-  clearTimeout(deadStatusTimer);
-  if (autohideMs !== null && autohideMs > 0) {
-    deadStatusTimer = setTimeout(() => { deadCheckStatusEl.hidden = true; }, autohideMs);
-  }
-}
-
 // --- Sort ---
 document.getElementById('sort-select').addEventListener('change', (e) => {
   currentSort = e.target.value;
@@ -479,11 +312,8 @@ importFileEl.addEventListener('change', () => {
 // --- Filtering ---
 
 function filtered() {
-  let list = staleMode ? allBookmarks.filter((bm) => isStale(bm, bookmarkStats, pluginInstalledAt)) : allBookmarks;
-  if (activeSimilarTo) {
-    const ids = new Set(findSimilar(activeSimilarTo, allBookmarks).map((b) => b.id));
-    list = list.filter((b) => ids.has(b.id));
-  } else if (activeTag === '__untagged__') {
+  let list = allBookmarks;
+  if (activeTag === '__untagged__') {
     list = list.filter((b) => b.tags.length === 0);
   } else if (activeTag) {
     list = list.filter((b) => b.tags.includes(activeTag));
@@ -510,15 +340,13 @@ function renderSidebar() {
   const allItem = makeTagItem('Wszystkie', allBookmarks.length, null);
   tagListEl.appendChild(allItem);
 
+  const inboxItem = makeTagItem('Inbox', untagged, '__untagged__');
+  inboxItem.classList.add('tag-item--inbox');
+  tagListEl.appendChild(inboxItem);
+
   const sorted = [...tagCounts.entries()].sort((a, b) => b[1] - a[1]);
   for (const [tag, count] of sorted) {
     tagListEl.appendChild(makeTagItem(tag, count, tag));
-  }
-
-  if (untagged > 0) {
-    const divItem = makeTagItem('Bez etykiet', untagged, '__untagged__');
-    divItem.classList.add('tag-item--divider');
-    tagListEl.appendChild(divItem);
   }
 
   const dupGroups = findDuplicateGroups(allBookmarks);
@@ -530,26 +358,11 @@ function renderSidebar() {
     dupItem.innerHTML = `<span>⚠ Duplikaty</span>
       <span class="tag-count tag-count--danger">${dupCount}</span>`;
     dupItem.addEventListener('click', () => {
-      duplicatesMode = !duplicatesMode; staleMode = false;
-      if (duplicatesMode) { activeTag = null; activeSimilarTo = null; activeFilterEl.hidden = true; }
+      duplicatesMode = !duplicatesMode;
+      if (duplicatesMode) { activeTag = null; activeFilterEl.hidden = true; }
       renderSidebar(); renderAll();
     });
     tagListEl.appendChild(dupItem);
-  }
-
-  const staleCount = allBookmarks.filter((bm) => isStale(bm, bookmarkStats, pluginInstalledAt)).length;
-  if (staleCount > 0) {
-    const staleItem = document.createElement('li');
-    staleItem.className = 'tag-item tag-item--divider tag-item--stale'
-      + (staleMode ? ' tag-item--active' : '');
-    staleItem.innerHTML = `<span>🕐 Nieużywane 30+ dni</span>
-      <span class="tag-count tag-count--stale">${staleCount}</span>`;
-    staleItem.addEventListener('click', () => {
-      staleMode = !staleMode; duplicatesMode = false;
-      if (staleMode) { activeTag = null; activeSimilarTo = null; activeFilterEl.hidden = true; }
-      renderSidebar(); renderAll();
-    });
-    tagListEl.appendChild(staleItem);
   }
 }
 
@@ -564,30 +377,13 @@ function makeTagItem(label, count, value) {
 
 function setTagFilter(tag) {
   activeTag = tag;
-  activeSimilarTo = null;
-  duplicatesMode = false; staleMode = false;
-  if (tag && tag !== '__untagged__') {
-    filterPrefixEl.textContent = 'Etykieta:';
-    filterLabelEl.textContent = tag;
+  duplicatesMode = false;
+  if (tag) {
+    filterPrefixEl.textContent = tag === '__untagged__' ? 'Widok:' : 'Etykieta:';
+    filterLabelEl.textContent = tag === '__untagged__' ? 'Inbox' : tag;
     activeFilterEl.hidden = false;
   } else {
     activeFilterEl.hidden = true;
-  }
-  renderSidebar();
-  renderAll();
-}
-
-function setSimilarFilter(bm) {
-  if (activeSimilarTo?.id === bm.id) {
-    activeSimilarTo = null;
-    activeFilterEl.hidden = true;
-  } else {
-    activeSimilarTo = bm;
-    activeTag = null;
-    duplicatesMode = false; staleMode = false;
-    filterPrefixEl.textContent = 'Podobne do:';
-    filterLabelEl.textContent = bm.title;
-    activeFilterEl.hidden = false;
   }
   renderSidebar();
   renderAll();
@@ -613,30 +409,29 @@ function renderAll() {
     } else {
       renderDuplicateGroups(groups);
     }
+    syncSelectionUi();
+    restoreKeyboardFocus();
     return;
   }
 
   if (list.length === 0) {
     containerEl.appendChild(emptyState());
+    syncSelectionUi();
     return;
   }
 
   if (groupMode && !activeTag) {
     renderGrouped(list);
-  } else if (gridMode) {
-    renderGrid(list);
   } else {
     renderFlat(list);
   }
+  syncSelectionUi();
+  restoreKeyboardFocus();
 }
 
 function sortBookmarks(list) {
   if (currentSort === 'default') return list;
   const sorted = [...list];
-  if (currentSort === 'popular') {
-    sorted.sort((a, b) => (bookmarkStats[b.id]?.count || 0) - (bookmarkStats[a.id]?.count || 0));
-    return sorted;
-  }
   if (currentSort === 'az')     sorted.sort((a, b) => a.title.localeCompare(b.title));
   if (currentSort === 'za')     sorted.sort((a, b) => b.title.localeCompare(a.title));
   if (currentSort === 'domain') sorted.sort((a, b) => {
@@ -651,139 +446,6 @@ function renderFlat(list) {
   const frag = document.createDocumentFragment();
   for (const bm of sortBookmarks(list)) frag.appendChild(createRow(bm));
   containerEl.appendChild(frag);
-}
-
-function renderGrid(list) {
-  const grid = document.createElement('div');
-  grid.className = 'bm-grid';
-  for (const bm of sortBookmarks(list)) grid.appendChild(createCard(bm));
-  containerEl.appendChild(grid);
-}
-
-function createCard(bm) {
-  const card = document.createElement('div');
-  card.className = 'bm-card';
-  card.dataset.id = bm.id;
-
-  // Favicon + domain header
-  const cardHeader = document.createElement('div');
-  cardHeader.className = 'bm-card-header';
-
-  const favicon = document.createElement('img');
-  favicon.className = 'bm-card-favicon';
-  const host = urlHostname(bm.url);
-  favicon.src = host
-    ? `https://www.google.com/s2/favicons?domain=${host}&sz=32`
-    : '';
-  favicon.width = 16;
-  favicon.height = 16;
-  favicon.alt = '';
-  favicon.onerror = () => { favicon.style.display = 'none'; };
-
-  const domain = document.createElement('span');
-  domain.className = 'bm-card-domain';
-  domain.textContent = host || '—';
-
-  // Copy button (always visible in card)
-  const copyBtn = document.createElement('button');
-  copyBtn.className = 'bm-card-copy';
-  copyBtn.title = 'Kopiuj link';
-  copyBtn.innerHTML = svgCopy();
-  copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyLink(bm.url, copyBtn); });
-
-  cardHeader.appendChild(favicon);
-  cardHeader.appendChild(domain);
-
-  const openCount = bookmarkStats[bm.id]?.count || 0;
-  if (openCount > 0) {
-    const countEl = document.createElement('span');
-    countEl.className = 'open-count';
-    countEl.textContent = `↗ ${openCount}`;
-    countEl.title = `Otwarto ${openCount} ${openCount === 1 ? 'raz' : 'razy'}`;
-    cardHeader.appendChild(countEl);
-  }
-
-  if (deadLinks.has(bm.url)) {
-    const dead = document.createElement('span');
-    dead.className = 'bm-dead-badge bm-dead-badge--card';
-    dead.textContent = 'Potencjalnie niedostępny';
-    cardHeader.appendChild(dead);
-  }
-  cardHeader.appendChild(copyBtn);
-
-  // Body (clickable)
-  const cardBody = document.createElement('a');
-  cardBody.className = 'bm-card-body';
-  cardBody.href = bm.url;
-  cardBody.title = bm.url;
-  cardBody.addEventListener('click', (e) => { e.preventDefault(); openBookmark(bm); });
-
-  const titleEl = document.createElement('span');
-  titleEl.className = 'bm-card-title';
-  titleEl.innerHTML = highlight(bm.title, currentQuery);
-
-  const urlEl = document.createElement('span');
-  urlEl.className = 'bm-card-url';
-  urlEl.innerHTML = highlight(bm.url, currentQuery);
-
-  cardBody.appendChild(titleEl);
-  cardBody.appendChild(urlEl);
-
-  if (bm.tags.length > 0) {
-    const tagsEl = document.createElement('div');
-    tagsEl.className = 'bm-card-tags';
-    for (const tag of bm.tags) {
-      const chip = document.createElement('span');
-      chip.className = 'tag-chip' + (tag === activeTag ? ' tag-chip--active' : '');
-      chip.textContent = tag;
-      chip.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); setTagFilter(tag); });
-      tagsEl.appendChild(chip);
-    }
-    cardBody.appendChild(tagsEl);
-  }
-
-  if (bm.parseError) {
-    const badge = document.createElement('button');
-    badge.className = 'parse-error-badge';
-    badge.title = bm.parseError;
-    badge.innerHTML = svgWarn() + '<span>Błąd etykiet</span>';
-    badge.addEventListener('click', (e) => { e.stopPropagation(); openTagsErrorPage(bm); });
-    cardBody.appendChild(badge);
-  }
-
-  // Action overlay (on hover)
-  const actions = document.createElement('div');
-  actions.className = 'bm-card-actions';
-
-  if (settings.aiEnabled) {
-    const aiBtn = makeActionBtn('Sugestie etykiet AI', svgAI());
-    aiBtn.addEventListener('click', (e) => { e.stopPropagation(); runAISuggest(bm, card, aiBtn, () => refreshRowTags(bm, card)); });
-    actions.appendChild(aiBtn);
-  }
-
-  const similarBtn = makeActionBtn('Pokaż podobne', svgSimilar());
-  if (activeSimilarTo?.id === bm.id) similarBtn.classList.add('bm-action--active');
-  similarBtn.addEventListener('click', (e) => { e.stopPropagation(); setSimilarFilter(bm); });
-
-  const labelBtn = makeActionBtn('Etykiety', svgLabel());
-  labelBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleTagEditor(bm, card, labelBtn); });
-
-  const editBtn = makeActionBtn('Edytuj', svgEdit());
-  editBtn.addEventListener('click', (e) => { e.stopPropagation(); startEdit(bm, card); });
-
-  const delBtn = makeActionBtn('Usuń', svgTrash());
-  delBtn.classList.add('bm-action--danger');
-  delBtn.addEventListener('click', (e) => { e.stopPropagation(); confirmDelete(bm.id, card); });
-
-  actions.appendChild(similarBtn);
-  actions.appendChild(labelBtn);
-  actions.appendChild(editBtn);
-  actions.appendChild(delBtn);
-
-  card.appendChild(cardHeader);
-  card.appendChild(cardBody);
-  card.appendChild(actions);
-  return card;
 }
 
 function renderGrouped(list) {
@@ -820,14 +482,7 @@ function createGroup(label, bms) {
 
   const body = document.createElement('div');
   body.className = 'group-body';
-  if (gridMode) {
-    const grid = document.createElement('div');
-    grid.className = 'bm-grid';
-    for (const bm of sortBookmarks(bms)) grid.appendChild(createCard(bm));
-    body.appendChild(grid);
-  } else {
-    for (const bm of bms) body.appendChild(createRow(bm));
-  }
+  for (const bm of sortBookmarks(bms)) body.appendChild(createRow(bm));
 
   header.addEventListener('click', () => {
     const collapsed = body.classList.toggle('collapsed');
@@ -869,6 +524,19 @@ function createRow(bm) {
   const row = document.createElement('div');
   row.className = 'bm-row';
   row.dataset.id = bm.id;
+  row.addEventListener('mouseenter', () => setKeyboardFocus(bm.id, false, row));
+
+  const select = document.createElement('input');
+  select.type = 'checkbox';
+  select.className = 'bm-select';
+  select.title = 'Zaznacz zakładkę';
+  select.checked = selectedIds.has(bm.id);
+  select.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setSelection(bm.id, select.checked);
+    setKeyboardFocus(bm.id, false, row);
+  });
+  row.appendChild(select);
 
   if (settings.favicons) {
     const host = urlHostname(bm.url);
@@ -884,7 +552,11 @@ function createRow(bm) {
   link.className = 'bm-link';
   link.href = bm.url;
   link.title = bm.url;
-  link.addEventListener('click', (e) => { e.preventDefault(); openBookmark(bm); });
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    setKeyboardFocus(bm.id, false, row);
+    openBookmark(bm);
+  });
 
   const titleEl = document.createElement('span');
   titleEl.className = 'bm-title';
@@ -896,22 +568,6 @@ function createRow(bm) {
 
   link.appendChild(titleEl);
   link.appendChild(urlEl);
-
-  const openCount = bookmarkStats[bm.id]?.count || 0;
-  if (openCount > 0) {
-    const countEl = document.createElement('span');
-    countEl.className = 'open-count';
-    countEl.textContent = `↗ ${openCount}`;
-    countEl.title = `Otwarto ${openCount} ${openCount === 1 ? 'raz' : 'razy'}`;
-    link.appendChild(countEl);
-  }
-
-  if (deadLinks.has(bm.url)) {
-    const dead = document.createElement('span');
-    dead.className = 'bm-dead-badge';
-    dead.textContent = 'Potencjalnie niedostępny';
-    link.appendChild(dead);
-  }
 
   if (bm.parseError) {
     const badge = document.createElement('button');
@@ -935,16 +591,6 @@ function createRow(bm) {
   const actions = document.createElement('div');
   actions.className = 'bm-actions';
 
-  if (settings.aiEnabled) {
-    const aiBtn = makeActionBtn('Sugestie etykiet AI', svgAI());
-    aiBtn.addEventListener('click', (e) => { e.stopPropagation(); runAISuggest(bm, row, aiBtn, () => refreshRowTags(bm, row)); });
-    actions.appendChild(aiBtn);
-  }
-
-  const similarBtn = makeActionBtn('Pokaż podobne', svgSimilar());
-  if (activeSimilarTo?.id === bm.id) similarBtn.classList.add('bm-action--active');
-  similarBtn.addEventListener('click', (e) => { e.stopPropagation(); setSimilarFilter(bm); });
-
   const labelBtn = makeActionBtn('Etykiety', svgLabel());
   labelBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleTagEditor(bm, row, labelBtn); });
 
@@ -955,7 +601,6 @@ function createRow(bm) {
   delBtn.classList.add('bm-action--danger');
   delBtn.addEventListener('click', (e) => { e.stopPropagation(); confirmDelete(bm.id, row); });
 
-  actions.appendChild(similarBtn);
   actions.appendChild(labelBtn);
   actions.appendChild(editBtn);
   actions.appendChild(delBtn);
@@ -974,6 +619,173 @@ function makeActionBtn(title, svg) {
   return b;
 }
 
+// --- Selection and bulk actions ---
+
+function getVisibleBookmarkIds() {
+  return [...new Set(getNavigableRows().map((row) => row.dataset.id))];
+}
+
+function setSelection(id, selected) {
+  if (selected) selectedIds.add(id);
+  else selectedIds.delete(id);
+  syncSelectionUi();
+}
+
+function toggleSelection(id) {
+  setSelection(id, !selectedIds.has(id));
+}
+
+function syncSelectionUi() {
+  const visibleIds = getVisibleBookmarkIds();
+  for (const checkbox of containerEl.querySelectorAll('.bm-select')) {
+    checkbox.checked = selectedIds.has(checkbox.closest('.bm-row').dataset.id);
+  }
+  const selectedVisible = visibleIds.filter((id) => selectedIds.has(id)).length;
+  bulkSelectAllEl.checked = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+  bulkSelectAllEl.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+  bulkCountEl.textContent = `${selectedIds.size} zaznaczonych`;
+  bulkActionsEl.hidden = selectedIds.size === 0;
+}
+
+bulkSelectAllEl.addEventListener('change', () => {
+  for (const id of getVisibleBookmarkIds()) {
+    if (bulkSelectAllEl.checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+  }
+  syncSelectionUi();
+});
+
+document.getElementById('bulk-clear').addEventListener('click', () => {
+  selectedIds.clear();
+  syncSelectionUi();
+});
+
+document.getElementById('bulk-add-tag').addEventListener('click', async () => {
+  const tags = bulkTagEl.value.split(',').map((tag) => tag.trim()).filter(Boolean);
+  if (tags.length === 0 || selectedIds.size === 0) return;
+
+  const history = [];
+  let updated = 0;
+  try {
+    for (const id of selectedIds) {
+      const bookmark = allBookmarks.find((item) => item.id === id);
+      if (!bookmark) continue;
+      const merged = mergeTags(bookmark.tags, tags);
+      if (merged.length === bookmark.tags.length) continue;
+      const snapshot = {
+        type: 'edit',
+        id,
+        title: bookmark.title,
+        rawTitleBefore: bookmark.rawTitle,
+        urlBefore: bookmark.url,
+      };
+      const newRawTitle = buildRawTitle(bookmark.title, merged);
+      await bookmarksApi.update(id, { title: newRawTitle });
+      history.push(snapshot);
+      bookmark.tags = merged;
+      bookmark.rawTitle = newRawTitle;
+      updated++;
+    }
+    if (history.length) historyPushMany(history);
+    bulkTagEl.value = '';
+    renderSidebar();
+    renderAll();
+    showToast(updated ? `Dodano etykiety do ${updated} zakładek` : 'Wybrane zakładki mają już te etykiety', updated ? 'ok' : 'warn');
+  } catch (err) {
+    if (history.length) historyPushMany(history);
+    await initBookmarks();
+    showToast(`Nie udało się dodać etykiet: ${err.message}`, 'err');
+  }
+});
+
+function renderFolderOptions() {
+  bulkFolderEl.innerHTML = '<option value="">Wybierz folder…</option>';
+  for (const folder of folders) {
+    const option = document.createElement('option');
+    option.value = folder.id;
+    option.textContent = folder.path;
+    bulkFolderEl.appendChild(option);
+  }
+}
+
+document.getElementById('bulk-move').addEventListener('click', async () => {
+  const parentId = bulkFolderEl.value;
+  if (!parentId || selectedIds.size === 0) return;
+
+  const history = [];
+  let moved = 0;
+  try {
+    for (const id of selectedIds) {
+      const bookmark = allBookmarks.find((item) => item.id === id);
+      if (!bookmark || bookmark.parentId === parentId) continue;
+      const snapshot = {
+        type: 'move',
+        id,
+        title: bookmark.title,
+        parentIdBefore: bookmark.parentId,
+        indexBefore: bookmark.index,
+      };
+      const result = await bookmarksApi.move(id, { parentId });
+      history.push(snapshot);
+      bookmark.parentId = result.parentId;
+      bookmark.index = result.index;
+      moved++;
+    }
+    if (history.length) historyPushMany(history);
+    showToast(moved ? `Przeniesiono ${moved} zakładek` : 'Zakładki są już w tym folderze', moved ? 'ok' : 'warn');
+  } catch (err) {
+    if (history.length) historyPushMany(history);
+    await initBookmarks();
+    showToast(`Nie udało się przenieść zakładek: ${err.message}`, 'err');
+  }
+});
+
+document.getElementById('bulk-delete').addEventListener('click', () => {
+  if (selectedIds.size === 0) return;
+  modalDesc.textContent = `${selectedIds.size} zaznaczonych zakładek`;
+  pendingDelete = { ids: [...selectedIds] };
+  modalOverlay.hidden = false;
+  modalConfirm.focus();
+});
+
+// --- Keyboard navigation ---
+
+function getNavigableRows() {
+  return [...containerEl.querySelectorAll('.bm-row')].filter((row) => row.offsetParent !== null);
+}
+
+function getKeyboardRow() {
+  return containerEl.querySelector('.bm-row--keyboard')
+    ?? getNavigableRows().find((row) => row.dataset.id === keyboardBookmarkId)
+    ?? null;
+}
+
+function getKeyboardBookmark() {
+  return allBookmarks.find((bookmark) => bookmark.id === keyboardBookmarkId) ?? null;
+}
+
+function setKeyboardFocus(id, scroll = true, targetRow = null) {
+  keyboardBookmarkId = id;
+  for (const row of getNavigableRows()) row.classList.remove('bm-row--keyboard');
+  const row = targetRow ?? getNavigableRows().find((item) => item.dataset.id === id);
+  row?.classList.add('bm-row--keyboard');
+  if (scroll) row?.scrollIntoView({ block: 'nearest' });
+}
+
+function moveKeyboardFocus(delta, rows = getNavigableRows()) {
+  if (rows.length === 0) return;
+  const current = rows.findIndex((row) => row.dataset.id === keyboardBookmarkId);
+  const next = current === -1
+    ? (delta > 0 ? 0 : rows.length - 1)
+    : (current + delta + rows.length) % rows.length;
+  setKeyboardFocus(rows[next].dataset.id, true, rows[next]);
+}
+
+function restoreKeyboardFocus() {
+  if (!keyboardBookmarkId || !getKeyboardRow()) keyboardBookmarkId = null;
+  if (keyboardBookmarkId) setKeyboardFocus(keyboardBookmarkId, false);
+}
+
 // --- Tag chips ---
 
 function buildTagChips(bm) {
@@ -990,11 +802,6 @@ function buildTagChips(bm) {
 }
 
 function refreshRowTags(bm, row) {
-  if (row.classList.contains('bm-card')) {
-    // In grid mode, rebuild the whole card
-    row.replaceWith(createCard(bm));
-    return;
-  }
   const link = row.querySelector('.bm-link');
   link.querySelector('.bm-tags')?.remove();
   link.querySelector('.parse-error-badge')?.remove();
@@ -1101,12 +908,11 @@ function startEdit(bm, row) {
   const save = document.createElement('button');
   save.type = 'submit'; save.className = 'edit-save'; save.textContent = 'Zapisz';
 
-  const isCard = row.classList.contains('bm-card');
   const cancel = document.createElement('button');
   cancel.type = 'button'; cancel.className = 'edit-cancel'; cancel.textContent = 'Anuluj';
   cancel.addEventListener('click', () => {
     row.classList.remove('bm-row--editing');
-    row.replaceWith(isCard ? createCard(bm) : createRow(bm));
+    row.replaceWith(createRow(bm));
   });
 
   form.addEventListener('submit', async (e) => {
@@ -1121,12 +927,14 @@ function startEdit(bm, row) {
       historyPush(snapshot);
       bm.title = newTitle; bm.url = newUrl; bm.tags = newTags; bm.rawTitle = newRaw;
       row.classList.remove('bm-row--editing');
-      row.replaceWith(isCard ? createCard(bm) : createRow(bm));
+      row.replaceWith(createRow(bm));
       showToast(`Zapisano „${newTitle}"`, 'ok', async () => {
         await undoHistoryEntry(snapshot, async () => {
           try {
             const tree = await bookmarksApi.getTree();
             allBookmarks = flattenBookmarks(tree);
+            folders = flattenFolders(tree);
+            renderFolderOptions();
             renderSidebar();
             renderAll();
             showToast('Cofnięto edycję', 'ok');
@@ -1159,25 +967,43 @@ document.addEventListener('keydown', (e) => {
 
 modalConfirm.addEventListener('click', async () => {
   if (!pendingDelete) return;
-  const { id, row } = pendingDelete;
-  const bm = allBookmarks.find((b) => b.id === id);
-  const snapshot = bm
-    ? { type: 'delete', title: bm.title, rawTitle: bm.rawTitle, url: bm.url, ts: Date.now() }
-    : null;
+  const ids = pendingDelete.ids || [pendingDelete.id];
+  const snapshotTime = Date.now();
+  const snapshots = ids.map((id) => allBookmarks.find((bookmark) => bookmark.id === id))
+    .filter(Boolean)
+    .map((bookmark, index) => ({
+      type: 'delete',
+      id: bookmark.id,
+      title: bookmark.title,
+      rawTitle: bookmark.rawTitle,
+      url: bookmark.url,
+      parentId: bookmark.parentId,
+      index: bookmark.index,
+      ts: snapshotTime + index,
+    }));
   closeModal();
+
+  const removedIds = [];
   try {
-    await bookmarksApi.remove(id);
-    if (snapshot) historyPush(snapshot);
-    allBookmarks = allBookmarks.filter((b) => b.id !== id);
-    row.remove();
+    for (const id of ids) {
+      await bookmarksApi.remove(id);
+      removedIds.push(id);
+    }
+    if (snapshots.length) historyPushMany(snapshots);
+    const removedSet = new Set(removedIds);
+    allBookmarks = allBookmarks.filter((bookmark) => !removedSet.has(bookmark.id));
+    for (const id of removedIds) selectedIds.delete(id);
     renderSidebar();
-    resultsCountEl.textContent = `${allBookmarks.length} zakładek`;
-    if (snapshot) {
+    renderAll();
+    if (snapshots.length === 1) {
+      const [snapshot] = snapshots;
       showToast(`Usunięto „${snapshot.title}"`, 'ok', async () => {
         await undoHistoryEntry(snapshot, async () => {
           try {
             const tree = await bookmarksApi.getTree();
             allBookmarks = flattenBookmarks(tree);
+            folders = flattenFolders(tree);
+            renderFolderOptions();
             renderSidebar();
             renderAll();
             showToast('Cofnięto usunięcie', 'ok');
@@ -1186,16 +1012,22 @@ modalConfirm.addEventListener('click', async () => {
           }
         });
       });
+    } else {
+      showToast(`Usunięto ${removedIds.length} zakładek — można je cofnąć w historii`, 'ok');
     }
   } catch (err) {
-    showToast(`Błąd usuwania: ${err.message}`, 'err');
+    const removedSet = new Set(removedIds);
+    const successfulSnapshots = snapshots.filter((snapshot) => removedSet.has(snapshot.id));
+    if (successfulSnapshots.length) historyPushMany(successfulSnapshots);
+    await initBookmarks();
+    showToast(`Usunięto ${removedIds.length} z ${ids.length}. Błąd: ${err.message}`, 'err');
   }
 });
 
 function confirmDelete(id, row) {
   const bm = allBookmarks.find((b) => b.id === id);
   modalDesc.textContent = bm ? bm.title : '';
-  pendingDelete = { id, row };
+  pendingDelete = { id };
   modalOverlay.hidden = false;
   modalConfirm.focus();
 }
@@ -1207,9 +1039,6 @@ function closeModal() { modalOverlay.hidden = true; pendingDelete = null; }
 function openBookmark(bm) {
   const url = bm.url;
   if (!isAllowedProtocol(url)) { openErrorPage(url); return; }
-  BookmarkStats.increment(bm.id);
-  const prevStat = bookmarkStats[bm.id];
-  bookmarkStats[bm.id] = { count: (prevStat?.count || 0) + 1, lastOpened: Date.now() };
   chrome.tabs.create({ url });
 }
 
@@ -1263,7 +1092,7 @@ async function importBookmarks(file) {
   for (const row of rows.slice(1).filter((r) => r[ui]?.trim())) {
     const url = row[ui].trim(), title = row[ti]?.trim() || url;
     const tags = gi !== -1 ? (row[gi] || '').split(';').map((t) => t.trim()).filter(Boolean) : [];
-    if (allBookmarks.some((b) => b.url === url)) { skipped++; continue; }
+    if (findBookmarkByUrl(allBookmarks, url)) { skipped++; continue; }
     try {
       await bookmarksApi.create({ title: buildRawTitle(title, tags), url });
       added++;
@@ -1273,6 +1102,8 @@ async function importBookmarks(file) {
   try {
     const tree = await bookmarksApi.getTree();
     allBookmarks = flattenBookmarks(tree);
+    folders = flattenFolders(tree);
+    renderFolderOptions();
     renderSidebar(); renderAll();
   } catch (err) {
     showToast(`Błąd odświeżania: ${err.message}`, 'err');

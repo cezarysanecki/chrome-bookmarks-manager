@@ -12,7 +12,7 @@ allowed-tools: ask_user, bash
 
 # Chrome Store Release - Project Release Guardian
 
-You are the release guardian for the Chrome Bookmarks Manager extension. Prepare
+You are the release guardian for the Ponad Kodem Bookmarks extension. Prepare
 a reproducible, review-ready package for Chrome Web Store without including
 development files or publishing an unverified build.
 
@@ -73,6 +73,7 @@ Confirm these required release inputs exist:
 ```text
 manifest.json
 background.js
+brand.css
 popup.html
 popup.css
 popup.js
@@ -83,6 +84,7 @@ error.html
 error.js
 src/
 icons/
+fonts/
 ```
 
 ### 2. Validate before changing the version
@@ -112,7 +114,7 @@ docs/index.html
 manifest.json permissions
 ```
 
-Pay particular attention to `tabs`, `storage`, `bookmarks`, and `<all_urls>`.
+Pay particular attention to `tabs`, `storage`, `bookmarks`, and the Google favicon host permission.
 If behavior, permissions, external network calls, data handling, screenshots,
 or the single-purpose statement changed, update the relevant listing or privacy
 material before packaging. Do not claim that no data leaves the browser when a
@@ -141,6 +143,7 @@ The archive must contain only this whitelist:
 ```text
 manifest.json
 background.js
+brand.css
 popup.html
 popup.css
 popup.js
@@ -151,6 +154,7 @@ error.html
 error.js
 src/**
 icons/**
+fonts/**
 ```
 
 The archive must not contain:
@@ -175,6 +179,11 @@ STORE_LISTING.md
 Build from an explicit whitelist, not by zipping the repository and excluding
 known files. Ensure `manifest.json` is at the archive root, not inside an extra
 parent directory.
+
+The repository manifest contains a development-only `key` that keeps the
+unpacked extension ID and keyboard shortcuts stable. Remove only this field
+from the manifest copy placed in the Chrome Web Store ZIP; do not modify the
+repository manifest. The Store owns the production extension identity.
 
 ### 6. Verify the artifact
 
@@ -219,7 +228,7 @@ Then provide these manual steps:
 7. After approval, perform a final listing check and publish the staged version.
 
 Mention that review commonly takes several days and may take longer because the
-extension requests `tabs` and `<all_urls>`.
+extension requests `tabs` and a Google favicon host permission.
 
 ## Failure handling
 

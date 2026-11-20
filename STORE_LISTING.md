@@ -5,17 +5,17 @@
 ## Krótki opis *(maks. 132 znaki)*
 
 ```
-Przeglądaj, wyszukuj i porządkuj zakładki za pomocą etykiet. Historia zmian, wykrywanie duplikatów i opcjonalne AI.
+Przeglądaj, wyszukuj i porządkuj zakładki za pomocą etykiet. Historia zmian, cofanie i wykrywanie duplikatów.
 ```
 
-*(118 znaków)*
+*(109 znaków)*
 
 ---
 
 ## Szczegółowy opis
 
 ```
-Bookmarks Manager to rozszerzenie dla osób, które mają dużo zakładek i chcą je sprawnie ogarnąć — bez zakładania kont, bez chmury, bez reklam.
+Ponad Kodem — Zakładki to rozszerzenie dla osób, które mają dużo zakładek i chcą je sprawnie ogarnąć — bez zakładania kont, bez chmury, bez reklam.
 
 ━━━ JAK DZIAŁAJĄ ETYKIETY ━━━
 
@@ -31,41 +31,38 @@ Dzięki temu etykiety synchronizują się automatycznie przez konto Google razem
 Wyszukuje po tytule i URL — nie tylko od początku, ale też w środku i na końcu tekstu.
 
 🏷 Etykiety i filtrowanie
-Dodawaj etykiety bezpośrednio z listy zakładek. Kliknij etykietę, aby przefiltrować widok. W pełnoekranowym widoku lewy panel zestawia wszystkie etykiety z liczbą zakładek.
+Dodawaj etykiety bezpośrednio z listy zakładek. Formularz podpowiada istniejące i ostatnio używane etykiety. Kliknij etykietę, aby przefiltrować widok.
+
+📥 Inbox
+Osobny widok pokazuje zakładki bez etykiet, aby można było szybko uporządkować nowe wpisy.
+
+✅ Operacje masowe
+Zaznacz wiele zakładek i jednym działaniem dodaj etykiety, przenieś je do folderu Chrome albo usuń.
 
 ↩ Historia zmian z cofaniem (Undo)
 Każde usunięcie, edycja i zmiana etykiety jest rejestrowana. Możesz cofnąć operację przyciskiem w powiadomieniu (6 sekund) lub z panelu historii w widoku pełnym.
 
 ⚠ Wykrywanie duplikatów
-Automatycznie porównuje adresy URL, ignorując www, parametry śledzące (UTM, fbclid itp.) i kotwice #. Duplikaty grupowane są do szybkiego przejrzenia i usunięcia.
-
-🔗 Podobne zakładki
-Jeden klik pokazuje zakładki z tej samej domeny lub o zbliżonym tytule — idealne do odkrywania powtórzeń i porządkowania kolekcji.
+Automatycznie porównuje adresy URL, ignorując www, parametry śledzące (UTM, fbclid itp.) i kotwice #. Przy dodawaniu nie tworzy kolejnej kopii — pozwala uzupełnić etykiety istniejącej zakładki.
 
 📋 Eksport i import CSV
 Pobierz wszystkie zakładki jako plik .csv (kompatybilny z Excel) lub wczytaj zakładki z zewnętrznego pliku. Format: tytuł, URL, etykiety.
 
 ⌨ Skróty klawiaturowe
-Ctrl+Shift+B — otwórz popup
-Ctrl+Shift+D — zapisz aktywną stronę jako zakładkę z paskiem narzędzi
+Alt+Shift+B — otwórz popup
+Alt+Shift+D — zapisz aktywną stronę jako zakładkę z paskiem narzędzi
+J/K — poruszaj się po pełnym widoku
+X — zaznacz zakładkę do operacji masowej
 
-🖼 Dwa widoki
-Lista klasyczna lub siatka kafelków z ikoną domeny — do wyboru w widoku pełnoekranowym.
-
-━━━ OPCJONALNE (domyślnie wyłączone) ━━━
-
-🌐 Sprawdzanie martwych linków
-Weryfikuje dostępność zakładek przez żądania HEAD. Niedostępne oznaczane są plakietką. Uwaga: przy dużej liczbie zakładek może spowolnić działanie.
-
-✨ Sugestie etykiet AI (wymaga klucza OpenAI)
-Po włączeniu i wpisaniu klucza API przycisk gwiazdki przy zakładce wysyła tytuł i URL do GPT-4o mini, który proponuje etykiety jako klikalne chipsy.
+🧭 Dwa tryby pracy
+Mały popup służy do wyszukiwania, otwierania, kopiowania i dodawania zakładek. Pełny widok zawiera edycję, usuwanie, porządkowanie duplikatów oraz import i eksport.
 
 🖼 Favicony na liście
 Wyświetla ikonę domeny przy każdej zakładce na liście.
 
 ━━━ PRYWATNOŚĆ ━━━
 
-Dane zakładek, historia zmian i ustawienia są przechowywane lokalnie. Po włączeniu funkcji opcjonalnych rozszerzenie wysyła żądania HEAD do adresów zakładek, pobiera favicony z Google lub przesyła tytuł i URL do OpenAI w celu wygenerowania etykiet.
+Dane zakładek, historia zmian i ustawienia są przechowywane lokalnie. Po włączeniu favicon domena zakładki jest wysyłana do usługi favicon Google.
 ```
 
 ---
@@ -81,13 +78,13 @@ Dane zakładek, historia zmian i ustawienia są przechowywane lokalnie. Po włą
 
 **Krótki:**
 ```
-Search, tag and organize your Chrome bookmarks. Duplicate detection, change history with undo, and optional AI tag suggestions.
+Search, tag and organize Chrome bookmarks. Includes duplicate detection, change history with undo, and CSV import and export.
 ```
-*(114 znaków)*
+*(125 znaków)*
 
 **Szczegółowy:**
 ```
-Bookmarks Manager is a no-account, no-cloud extension for people with large bookmark collections who want to keep them organized.
+Ponad Kodem Bookmarks is a no-account, no-cloud extension for people with large bookmark collections who want to keep them organized.
 
 ━━━ HOW TAGS WORK ━━━
 
@@ -101,29 +98,27 @@ This means tags automatically sync across your devices via your Google account �
 
 🔍 Real-time search — searches title and URL, including mid-word matches
 
-🏷 Labels & filtering — add tags inline, click any tag to filter the list; full-page view shows a tag sidebar with counts
+🏷 Labels & filtering — add tags inline with suggestions for existing and recently used tags
+
+📥 Inbox — review all bookmarks without tags in one focused view
+
+✅ Bulk actions — add tags, move to a Chrome folder, or delete multiple selected bookmarks
 
 ↩ Change history with Undo — every deletion, edit and tag change is logged; undo from a 6-second toast or the history sidebar
 
-⚠ Duplicate detection — compares normalized URLs (strips www, UTM params, anchors); groups duplicates for easy cleanup
-
-🔗 Similar bookmarks — one click shows bookmarks from the same domain or with matching title keywords
+⚠ Duplicate prevention and detection — prevents duplicate additions and groups existing duplicates for cleanup
 
 📋 CSV export / import — download all bookmarks as a .csv file or import from one; Excel-compatible with UTF-8 BOM
 
-⌨ Keyboard shortcuts — Ctrl+Shift+B to open, Ctrl+Shift+D to save current tab
+⌨ Keyboard shortcuts — Alt+Shift+B to open, Alt+Shift+D to save, J/K to navigate, and X to select
 
-🖼 Grid view — switch between list and card grid in the full-page view
+🧭 Two focused views — a quick popup for search, open, copy, and add; a full-page view for organization and destructive actions
 
-━━━ OPTIONAL FEATURES (off by default) ━━━
-
-🌐 Dead link checker — sends HEAD requests to verify bookmark availability; marks unreachable links
-✨ AI tag suggestions — requires OpenAI API key; uses GPT-4o mini to suggest tags per bookmark
 🖼 Favicons in list — shows domain icon next to each bookmark in list view
 
 ━━━ PRIVACY ━━━
 
-Bookmark data, change history, and settings are stored locally. Optional features send HEAD requests to bookmarked sites, fetch favicons from Google, or send a bookmark title and URL to OpenAI for tag suggestions.
+Bookmark data, change history, and settings are stored locally. When favicons are enabled, bookmark domains are sent to Google's favicon service.
 ```
 
 ---
@@ -133,6 +128,6 @@ Bookmark data, change history, and settings are stored locally. Optional feature
 | Uprawnienie | Powód |
 |---|---|
 | `bookmarks` | Odczyt, tworzenie, edycja i usuwanie zakładek Chrome |
-| `tabs` | Pobieranie URL aktywnej karty przy zapisywaniu skrótem Ctrl+Shift+D |
-| `storage` | Zapisywanie historii zmian i ustawień lokalnie w przeglądarce |
-| `host_permissions: <all_urls>` | Sprawdzanie dostępności zakładek (martwe linki) oraz pobieranie faviconów i opcjonalne wywołania OpenAI API |
+| `tabs` | Pobieranie URL aktywnej karty przy zapisywaniu skrótem Alt+Shift+D |
+| `storage` | Zapisywanie historii zmian, ostatnio używanych etykiet i ustawień lokalnie w przeglądarce |
+| `host_permissions: https://www.google.com/*` | Opcjonalne pobieranie faviconów domen z usługi Google |

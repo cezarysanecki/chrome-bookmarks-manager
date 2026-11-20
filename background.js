@@ -2,11 +2,17 @@ import { STORAGE_KEYS } from './src/config.js';
 import { cleanTrackingParams } from './src/lib/url.js';
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(STORAGE_KEYS.INSTALLED_AT, (data) => {
-    if (!data[STORAGE_KEYS.INSTALLED_AT]) {
-      chrome.storage.local.set({ [STORAGE_KEYS.INSTALLED_AT]: Date.now() });
-    }
+  chrome.storage.local.get(STORAGE_KEYS.SETTINGS, (data) => {
+    const current = data[STORAGE_KEYS.SETTINGS] || {};
+    const {
+      aiEnabled: _aiEnabled,
+      openaiKey: _openaiKey,
+      deadLinkCheck: _deadLinkCheck,
+      ...remainingSettings
+    } = current;
+    chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: remainingSettings });
   });
+  chrome.storage.local.remove(['bm_stats', 'bm_installed_at']);
 });
 
 chrome.commands.onCommand.addListener(async (command) => {
@@ -16,7 +22,7 @@ chrome.commands.onCommand.addListener(async (command) => {
   try {
     [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   } catch (err) {
-    showBadge('!', '#e53e3e');
+    showBadge('!', '#ff3b30');
     return;
   }
 
@@ -31,7 +37,7 @@ chrome.commands.onCommand.addListener(async (command) => {
     await chrome.action.openPopup();
   } catch {
     // openPopup() not available in this context — show badge as hint
-    showBadge('+', '#7c6aff');
+    showBadge('+', '#ff5722');
   }
 });
 

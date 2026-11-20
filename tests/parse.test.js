@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTitle, buildRawTitle, flattenBookmarks } from '../src/bookmarks/parse.js';
+import { parseTitle, buildRawTitle, flattenBookmarks, flattenFolders } from '../src/bookmarks/parse.js';
 
 describe('parseTitle', () => {
   it('parses title without tags', () => {
@@ -101,10 +101,35 @@ describe('flattenBookmarks', () => {
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       id: '2',
+      parentId: undefined,
+      index: 0,
       title: 'GitHub',
       url: 'https://github.com',
       tags: [],
       parseError: null,
+    });
+  });
+
+  describe('flattenFolders', () => {
+    it('returns nested folder paths without bookmark leaves', () => {
+      const tree = [{
+        id: '0',
+        title: '',
+        children: [{
+          id: '1',
+          title: 'Bookmarks Bar',
+          children: [{
+            id: '2',
+            title: 'Work',
+            children: [{ id: '3', title: 'GitHub', url: 'https://github.com' }],
+          }],
+        }],
+      }];
+
+      expect(flattenFolders(tree)).toEqual([
+        { id: '1', title: 'Bookmarks Bar', path: 'Bookmarks Bar' },
+        { id: '2', title: 'Work', path: 'Bookmarks Bar / Work' },
+      ]);
     });
   });
 

@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="icons/icon128.png" width="80" alt="Bookmarks Manager logo">
+  <img src="icons/icon128.png" width="80" alt="Ponad Kodem Bookmarks logo">
 </p>
 
-<h1 align="center">Bookmarks Manager</h1>
+<h1 align="center">Ponad Kodem Bookmarks</h1>
 
 <p align="center">
-  A private Chrome bookmarks manager with search, labels, open statistics and optional AI.<br>
+  A private Chrome bookmarks manager with fast search, labels, Inbox, and bulk actions.<br>
   No accounts, no cloud, no ads.
 </p>
 
@@ -16,124 +16,115 @@
 ---
 
 <p align="center">
-  <img src="store/screenshot-popup.png" width="49%" alt="Popup: search and bookmark list">
-  <img src="store/screenshot-fullpage.png" width="49%" alt="Full view: grid with the labels panel">
+  <img src="store/screenshot-popup.png" width="49%" alt="Popup with duplicate prevention and tag suggestions">
+  <img src="store/screenshot-fullpage.png" width="49%" alt="Full-page view with Inbox and bulk actions">
 </p>
 
 ---
 
-The extension works on Chrome's own bookmarks, so nothing has to be imported or synced separately. The interface is in Polish 🇵🇱 PL.
+The extension works directly with Chrome bookmarks. The interface is in Polish.
 
 ## Installation
 
-1. Download or clone the repository.
-2. Open `chrome://extensions` in Chrome.
-3. Turn on **Developer mode** (top right corner).
-4. Click **Load unpacked** and select the extension folder.
+1. Download or clone the repository into a permanent directory.
+2. Open `chrome://extensions`.
+3. Enable **Developer mode**.
+4. Click **Load unpacked** and select the extension directory.
+5. Open `chrome://extensions/shortcuts` to review the shortcuts.
+
+The key stored in `manifest.json` keeps the local extension ID stable, so shortcut assignments survive Chrome restarts and code updates. Keep using the same directory and the **Reload** button instead of installing additional copies.
 
 ## Quick start
 
 | Action | How |
 |---|---|
-| Open the manager | Click the toolbar icon or press `Ctrl+Shift+B` |
-| Bookmark the current page | `Ctrl+Shift+D` |
-| Open the full-page view | **Widok** button in the popup |
-| Search | Start typing; results filter as you type |
+| Open the popup | Click the toolbar icon or press `Alt+Shift+B` |
+| Bookmark the current page | `Alt+Shift+D` |
+| Open the full-page manager | Click **Zarzadzaj** in the popup |
+| Search | Start typing; results filter immediately |
 
 ## Features
 
-### Search
-Search matches the **title, URL and labels**, anywhere in the text, not only at the beginning.
+### Fast search
 
-### Labels
-Bookmarks can be grouped by labels. Labels are stored in the bookmark title:
+Search matches the bookmark title, URL, and labels anywhere in the text.
 
-```
+### Labels that sync with Chrome
+
+Labels are stored directly in the bookmark title:
+
+```text
 Page name | label1, label2
 ```
 
-- Click the **label** icon next to a bookmark to add or remove labels.
-- Click a label in the list to show only bookmarks with that label.
-- In the full-page view the left panel lists all labels with bookmark counts.
-- The **Bez etykiet** bar in the popup shows bookmarks without any label.
+Because the label data remains part of the Chrome bookmark, it synchronizes through the user's Google account without a separate backend.
 
-### Open statistics and sorting by popularity
-Every time a bookmark is opened, it is counted. A `↗ N` badge shows the count. The default **Najpopularniejsze** sort puts the most used bookmarks on top. Other sort options:
+### Safe bookmark creation
 
-- Chrome's default order
-- A → Z / Z → A
-- By domain
+Before creating a bookmark, the extension compares normalized URLs while ignoring `www`, tracking parameters, and anchors. If the page already exists, it updates the existing bookmark with the selected labels instead of creating another copy.
 
-The chosen sort is remembered between sessions.
+The add form suggests existing and recently used labels.
 
-### Unused bookmarks (30+ days)
-The extension finds bookmarks that have not been opened for more than 30 days. The popup shows a bar with their count and a **Pokaż** button to review them.
+### Inbox
 
-### Editing and deleting
-Hover over a bookmark to see the actions:
-- **Edit**: change the title, URL and labels in place.
-- **Delete**: asks for confirmation. After deleting, you have **6 seconds** to undo it from the notification.
+The **Inbox** view contains every bookmark without a label, providing a focused queue for organizing recently saved pages.
 
-### Change history and undo
-Every delete, edit and label change is recorded. In the full-page view the **Historia** section lists recent operations, and each one can be undone with `↩`.
+### Bulk actions
 
-### Copying a link
-The copy icon next to each bookmark copies its URL to the clipboard.
+Select multiple bookmarks in the full-page view to:
 
-### Similar bookmarks
-The **Podobne** button filters the list to bookmarks from the same domain or with a similar title, which helps to find topical duplicates.
+- add shared labels;
+- move them to a Chrome bookmark folder;
+- delete them, with operations recorded in the history for undo.
 
-### Duplicate URLs
-The extension compares URLs while ignoring `www`, tracking parameters and `#` anchors. When it finds duplicates:
-- the popup shows a bar with their count and a **Pokaż** button,
-- the full-page view groups them under **Duplikaty** in the left panel, ready to review and delete.
+### Two focused views
+
+The popup is limited to search, open, copy, and add. Editing, labels, folders, duplicate cleanup, history, and CSV import/export live in the full-page view.
+
+### Editing, deletion, and history
+
+Hover over a bookmark to edit its title, URL, or labels, or to delete it. Edit, label, move, and delete operations are saved in the local history and can be undone.
+
+### Duplicate cleanup
+
+The **Duplikaty** section groups bookmarks that resolve to the same normalized URL.
 
 ### CSV export and import
-- **Export** downloads a `.csv` file with the titles, URLs and labels of all bookmarks (opens in Excel).
-- **Import** reads a `.csv` file in the same format and skips bookmarks that already exist.
 
-Columns: `title`, `url`, `tags` (labels separated by semicolons).
+- **Export** downloads `title`, `url`, and `tags` columns as UTF-8 CSV.
+- **Import** reads the same format and skips URLs that already exist.
 
-### Grid view and grouping
-The full-page view has two switches that can be combined:
-- **Siatka** shows bookmarks as tiles instead of a list,
-- **Grupuj** groups bookmarks by label into sections.
+### Grouping and sorting
 
-Both settings are remembered between sessions.
+The full-page view can group bookmarks by label and sort them in Chrome order, alphabetically, or by domain. Preferences persist between sessions.
 
 ## Settings
 
-Open them from the full-page view with the **Ustawienia** button. `Escape` closes them.
+The full-page settings contain one optional feature:
 
-### Favicons *(off by default)*
-Shows the domain icon next to each bookmark.
-
-### Dead link check *(off by default)*
-Each time the full-page view opens, the extension checks every bookmark with a HEAD request (6 s timeout). Bookmarks that may be unavailable get a **Potencjalnie niedostępny** badge.
-
-> With many bookmarks this can slow the view down noticeably.
-
-### AI label suggestions *(off by default, needs an OpenAI key)*
-With an API key set, each bookmark gets a star button. Clicking it sends the title and URL to **GPT-4o mini** and shows suggested labels to pick from.
-
-The OpenAI key is stored only in the browser and is sent only to OpenAI.
+- **Favicons**: fetch and display domain icons from Google's favicon service.
 
 ## Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+Shift+B` | Open or close the popup |
-| `Ctrl+Shift+D` | Bookmark the current page |
-| `↑` / `↓` | Move through the list in the popup |
+| `Alt+Shift+B` | Open or close the popup |
+| `Alt+Shift+D` | Bookmark the active page |
+| `Up` / `Down` | Navigate in the popup |
+| `/` | Focus full-page search |
+| `J` / `K` or `Up` / `Down` | Navigate in the full-page view |
 | `Enter` | Open the highlighted bookmark |
-| `/` | Focus the search field (full-page view) |
-| `Escape` | Close a dialog or settings, clear the highlight |
+| `X` or `Space` | Select a bookmark for bulk actions |
+| `E` / `T` / `Y` | Edit / manage labels / copy URL |
+| `Delete` | Delete the highlighted bookmark |
+| `Escape` | Close a dialog or settings |
 
 ## Privacy
 
-- Bookmarks, change history and settings stay in the browser. Optional features can send HEAD requests to bookmark URLs, fetch favicons from Google, or send a title and URL to OpenAI.
-- Labels live in the Chrome bookmark title, so they sync between devices through your Google account with no extra infrastructure.
-- Change history and settings are saved in `chrome.storage.local` and never leave the browser.
+- Bookmark data remains in Chrome.
+- Settings, recent labels, and change history are stored in `chrome.storage.local`.
+- Labels remain in bookmark titles and sync through Chrome.
+- When favicons are enabled, bookmark domains are sent only to Google's favicon service.
 
 Full privacy policy: [cezarysanecki.github.io/chrome-bookmarks-manager/#privacy](https://cezarysanecki.github.io/chrome-bookmarks-manager/#privacy)
 

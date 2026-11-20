@@ -17,5 +17,6 @@ export const bookmarksApi = {
   getTree: wrap(chrome.bookmarks.getTree.bind(chrome.bookmarks)),
   create:  wrap(chrome.bookmarks.create.bind(chrome.bookmarks)),
   update:  wrap(chrome.bookmarks.update.bind(chrome.bookmarks)),
+  move:    wrap(chrome.bookmarks.move.bind(chrome.bookmarks)),
   remove:  wrap(chrome.bookmarks.remove.bind(chrome.bookmarks)),
 };
