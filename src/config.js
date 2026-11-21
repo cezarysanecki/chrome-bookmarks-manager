@@ -15,3 +15,5 @@ export const RECENT_TAGS_MAX = 8;
 export const ALLOWED_PROTOCOLS = ['http:', 'https:', 'ftp:', 'file:'];
 
 export const DEBOUNCE_MS = 300;
+export const POPUP_INITIAL_RENDER_COUNT = 40;
+export const POPUP_RENDER_BATCH_SIZE = 100;

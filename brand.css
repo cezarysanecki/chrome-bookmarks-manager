@@ -1,35 +1,3 @@
-@font-face {
-  font-family: "Inter";
-  src: url("fonts/inter-400.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Inter";
-  src: url("fonts/inter-600.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Inter";
-  src: url("fonts/inter-700.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Space Mono";
-  src: url("fonts/space-mono-700.ttf") format("truetype");
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-}
-
 .brand-lockup {
   display: flex;
   align-items: center;
@@ -51,7 +19,7 @@
 
 .brand-name {
   color: #ff8a65;
-  font-family: "Space Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: .08em;

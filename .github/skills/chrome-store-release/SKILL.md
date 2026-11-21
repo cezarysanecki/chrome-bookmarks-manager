@@ -84,7 +84,6 @@ error.html
 error.js
 src/
 icons/
-fonts/
 ```
 
 ### 2. Validate before changing the version
@@ -154,7 +153,6 @@ error.html
 error.js
 src/**
 icons/**
-fonts/**
 ```
 
 The archive must not contain:

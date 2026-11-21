@@ -1,4 +1,11 @@
-import { DEBOUNCE_MS, HISTORY_MAX, RECENT_TAGS_MAX, STORAGE_KEYS } from './src/config.js';
+import {
+  DEBOUNCE_MS,
+  HISTORY_MAX,
+  POPUP_INITIAL_RENDER_COUNT,
+  POPUP_RENDER_BATCH_SIZE,
+  RECENT_TAGS_MAX,
+  STORAGE_KEYS,
+} from './src/config.js';
 import { buildRawTitle, flattenBookmarks } from './src/bookmarks/parse.js';
 import { findBookmarkByUrl } from './src/bookmarks/duplicates.js';
 import { collectTags, mergeTags, updateRecentTags } from './src/bookmarks/tags.js';
@@ -12,6 +19,7 @@ let currentQuery = '';
 let highlightedIndex = -1;
 let settings = { favicons: false };
 let recentTags = [];
+let renderGeneration = 0;
 
 const searchInput = document.getElementById('search');
 const clearBtn = document.getElementById('clear-search');
@@ -38,6 +46,41 @@ async function initBookmarks() {
     if (!addPanel.hidden) {
       renderTagSuggestions();
       updateDuplicateNotice();
+    }
+  } catch (err) {
+    showToast(`Błąd ładowania zakładek: ${err.message}`, 'err');
+  }
+}
+
+function getStoredStartupData() {
+  if (!chrome.storage?.local) return Promise.resolve({});
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(
+      [STORAGE_KEYS.SETTINGS, STORAGE_KEYS.PENDING_ADD, STORAGE_KEYS.RECENT_TAGS],
+      (data) => {
+        const err = chrome.runtime.lastError;
+        if (err) reject(new Error(err.message));
+        else resolve(data);
+      },
+    );
+  });
+}
+
+async function initPopup() {
+  try {
+    const [tree, data] = await Promise.all([
+      bookmarksApi.getTree(),
+      getStoredStartupData(),
+    ]);
+    settings = { favicons: false, ...(data[STORAGE_KEYS.SETTINGS] || {}) };
+    recentTags = data[STORAGE_KEYS.RECENT_TAGS] || [];
+    allBookmarks = flattenBookmarks(tree);
+    renderBookmarks(allBookmarks, '');
+
+    if (data[STORAGE_KEYS.PENDING_ADD]) {
+      const { title, url } = data[STORAGE_KEYS.PENDING_ADD];
+      chrome.storage.local.remove(STORAGE_KEYS.PENDING_ADD);
+      openAddPanel(title, url);
     }
   } catch (err) {
     showToast(`Błąd ładowania zakładek: ${err.message}`, 'err');
@@ -169,24 +212,6 @@ document.getElementById('btn-fullpage').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('fullpage.html') });
 });
 
-if (chrome.storage?.local) {
-  chrome.storage.local.get(
-    [STORAGE_KEYS.SETTINGS, STORAGE_KEYS.PENDING_ADD, STORAGE_KEYS.RECENT_TAGS],
-    (data) => {
-    settings = { favicons: false, ...(data[STORAGE_KEYS.SETTINGS] || {}) };
-    recentTags = data[STORAGE_KEYS.RECENT_TAGS] || [];
-    initBookmarks();
-    if (data[STORAGE_KEYS.PENDING_ADD]) {
-      const { title, url } = data[STORAGE_KEYS.PENDING_ADD];
-      chrome.storage.local.remove(STORAGE_KEYS.PENDING_ADD);
-      openAddPanel(title, url);
-    }
-    },
-  );
-} else {
-  initBookmarks();
-}
-
 let debounceTimer;
 searchInput.addEventListener('input', () => {
   highlightedIndex = -1;
@@ -217,6 +242,8 @@ function filterBookmarks(query) {
 }
 
 function renderBookmarks(bookmarks, query) {
+  const generation = ++renderGeneration;
+  faviconObserver?.disconnect();
   bookmarksList.innerHTML = '';
   resultsCount.textContent = query.trim()
     ? `${bookmarks.length} z ${allBookmarks.length} zakładek`
@@ -231,10 +258,48 @@ function renderBookmarks(bookmarks, query) {
 
   bookmarksList.hidden = false;
   emptyState.hidden = true;
+  appendBookmarkRows(
+    bookmarks.slice(0, POPUP_INITIAL_RENDER_COUNT),
+    query,
+  );
+
+  let nextIndex = POPUP_INITIAL_RENDER_COUNT;
+  const appendNextBatch = () => {
+    if (generation !== renderGeneration || nextIndex >= bookmarks.length) return;
+    const endIndex = Math.min(nextIndex + POPUP_RENDER_BATCH_SIZE, bookmarks.length);
+    appendBookmarkRows(bookmarks.slice(nextIndex, endIndex), query);
+    nextIndex = endIndex;
+    scheduleIdleRender(appendNextBatch);
+  };
+  scheduleIdleRender(appendNextBatch);
+}
+
+function appendBookmarkRows(bookmarks, query) {
   const fragment = document.createDocumentFragment();
   for (const bookmark of bookmarks) fragment.appendChild(createBookmarkRow(bookmark, query));
   bookmarksList.appendChild(fragment);
 }
+
+function scheduleIdleRender(callback) {
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(callback);
+  } else {
+    setTimeout(callback, 0);
+  }
+}
+
+const faviconObserver = 'IntersectionObserver' in window
+  ? new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      const favicon = entry.target;
+      favicon.src = favicon.dataset.src;
+      faviconObserver.unobserve(favicon);
+    }
+  })
+  : null;
+
+initPopup();
 
 function createBookmarkRow(bookmark, query) {
   const row = document.createElement('li');
@@ -245,11 +310,18 @@ function createBookmarkRow(bookmark, query) {
     const host = urlHostname(bookmark.url);
     const favicon = document.createElement('img');
     favicon.className = 'bookmark-favicon';
-    favicon.src = host ? `https://www.google.com/s2/favicons?domain=${host}&sz=32` : '';
+    const src = host ? `https://www.google.com/s2/favicons?domain=${host}&sz=32` : '';
     favicon.width = 14;
     favicon.height = 14;
     favicon.alt = '';
+    favicon.decoding = 'async';
     favicon.onerror = () => { favicon.style.display = 'none'; };
+    if (faviconObserver && src) {
+      favicon.dataset.src = src;
+      faviconObserver.observe(favicon);
+    } else {
+      favicon.src = src;
+    }
     row.appendChild(favicon);
   }
 
